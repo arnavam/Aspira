@@ -15,5 +15,5 @@ def convert(text):
 
 
     print(time.time()-start_time)
-    os.system('''cd Wav2Lip && python3 inference.py --checkpoint_path checkpoints/wav2lip_gan.pth --face "file/mona_clip.mp4" --audio "file/test.wav"''')
+    os.system('''cd Wav2Lip && python3 inference.py --checkpoint_path checkpoints/wav2lip_gan.pth --face "filelists/mona_clip.mp4" --audio "filelists/test.wav"''')
     os.system("ffplay Wav2Lip/results/result_voice.mp4")
