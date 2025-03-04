@@ -1,0 +1,3 @@
+[submodule "Wav2Lip"]
+	path = Wav2Lip
+	url = git@github.com:arnavam/Wav2Lip.git
