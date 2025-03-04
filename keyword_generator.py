@@ -5,8 +5,8 @@ import time
 import fitz  # PyMuPDF
 from keybert import KeyBERT
 
-nltk.download('stopwords',download_dir='~/Developer/Ai_interviewer')
-nltk.download('punkt',download_dir='~/Developer/Ai_interviewer')
+nltk.download('stopwords',download_dir='file')
+nltk.download('punkt',download_dir='file')
 # nltk.download('punkt_tab',download_dir='~/Developer/Ai_interviewer')
 nltk.download('punkt_tab')
 r = Rake() 
