@@ -1,6 +1,4 @@
 *.pkl
-*.jpg
-*.pth
 *.pyc
 __pycache__
 *.h5
