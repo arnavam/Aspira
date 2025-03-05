@@ -46,7 +46,6 @@ def read_last_row(file_path):
 
 
 
-
 app = Flask(__name__)
 
 start_time=time.perf_counter()
@@ -61,35 +60,37 @@ def compute_similarity(sentence1, sentence2):
     return similarity_score
 
 
-q={}
-qa={}
-timer=4
 
 
-kw={}
 
-text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
-
-It can be broadly categorized into three types:
-
-Supervised Learning: Trains models on labeled data to predict or classify new, unseen data.
-Unsupervised Learning: Finds patterns or groups in unlabeled data, like clustering or dimensionality reduction.
-Reinforcement Learning: Learns through trial and error to maximize rewards, ideal for decision-making tasks.
-In addition these categories, there are also Semi-Supervised Learning and Self-Supervised Learning. 
-
-Semi-Supervised Learning uses a mix of labeled and unlabeled data, making it helpful when labeling data is costly or time-consuming. 
-Self-Supervised Learning creates its own labels from raw data, allowing it to learn patterns without needing labeled examples. 
-Machine Learning Pipeline
-Machine learning is fundamentally built upon data, which serves as the foundation for training and testing models. Data consists of inputs (features) and outputs (labels). A model learns patterns during training and is tested on unseen data to evaluate its performance and generalization. In order to make predictions, there are essential steps through which data passes in order to produce a machine learning model that can make predictions.'''
-
-question ="what is machine learning"
-#or question= "what subjects do you like?"
-#convert(question)
-text='i very much like machine learning'
 
 def aspira():
     #while(timer!=0):
-        time-=1
+        # timer-=1
+        q={}
+        qa={}
+        timer=4
+
+
+        kw={}
+        text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
+
+        It can be broadly categorized into three types:
+
+        Supervised Learning: Trains models on labeled data to predict or classify new, unseen data.
+        Unsupervised Learning: Finds patterns or groups in unlabeled data, like clustering or dimensionality reduction.
+        Reinforcement Learning: Learns through trial and error to maximize rewards, ideal for decision-making tasks.
+        In addition these categories, there are also Semi-Supervised Learning and Self-Supervised Learning. 
+
+        Semi-Supervised Learning uses a mix of labeled and unlabeled data, making it helpful when labeling data is costly or time-consuming. 
+        Self-Supervised Learning creates its own labels from raw data, allowing it to learn patterns without needing labeled examples. 
+        Machine Learning Pipeline
+        Machine learning is fundamentally built upon data, which serves as the foundation for training and testing models. Data consists of inputs (features) and outputs (labels). A model learns patterns during training and is tested on unseen data to evaluate its performance and generalization. In order to make predictions, there are essential steps through which data passes in order to produce a machine learning model that can make predictions.'''
+
+        question ="what is machine learning"
+        #or question= "what subjects do you like?"
+        #convert(question)
+        # text='i very much like machine learning'
         last_row = read_last_row('file/qa.csv')
         if last_row:
             value1, value2 = last_row  # Unpack the two values into separate variables
@@ -135,7 +136,7 @@ def aspira():
         kw=sorted_scores
         count1=3
         for  key , score in sorted_scores.items() :
-            if score >= 2 and len(key.split(' ')) < 4   :
+            if score[0] >= 4 and len(key.split(' ')) < 4   :
                 count1 -=1
                 if (count1==0):
                     break
@@ -178,12 +179,12 @@ def aspira():
         convert(question)
         print(time.perf_counter()-start_time)
 
-        with open('qa.csv', 'a', newline='') as file:
+        with open('file/qa.csv', 'a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([question, text])
         return 'stop'
 
-@app.route('/run-function', methods=['GET'])
+# @app.route('/run-function', methods=['GET'])
 def run_function():
     result = aspira()
     return jsonify({'result': result})
