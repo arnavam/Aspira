@@ -10,6 +10,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 # Initialize the model
 import time
+from flask import Flask, jsonify
+import random
+
+app = Flask(__name__)
 
 start_time=time.perf_counter()
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -34,7 +38,8 @@ question ="what is machine learning"
 kw={}
 
 def aspira():
-
+    #while(timer!=0):
+        time-=1
         text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
 
     It can be broadly categorized into three types:
@@ -138,7 +143,7 @@ def aspira():
         convert(question)
         print(time.perf_counter()-start_time)
 
-        yield 'start' 
+        yield jsonify({'result':'stop'})
 
 
 
