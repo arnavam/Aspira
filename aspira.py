@@ -11,49 +11,93 @@ import numpy as np
 # Initialize the model
 import time
 from flask import Flask, jsonify
-import random
+import os
+import csv
+
+# Load the data back into a dictionary
+# loaded_data = {}
+# with open('keywords.csv', 'r') as file:
+#     reader = csv.reader(file)
+#     for row in reader:
+#         key = row[0]
+#         # If the value consists of more than one element, convert it to a tuple
+#         if len(row) > 2:
+#             value = tuple(row[1:])
+#         else:
+#             value = row[1]
+#         loaded_data[key] = value
+
+# # Print the loaded dictionary
+# print(loaded_data)
+def read_last_row(file_path):
+# Check if the file exists and is not empty
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        with open(file_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            
+            # Read all rows and store them in a list
+            rows = list(reader)
+            
+            # Get the last row
+            last_row = rows[-1]
+            
+            return last_row            
+    return None
+
+
+
 
 app = Flask(__name__)
 
 start_time=time.perf_counter()
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Function to compute similarity between two sentences
 def compute_similarity(sentence1, sentence2):
-    # Convert sentences to embeddings
     embeddings1 = model.encode([sentence1])
     embeddings2 = model.encode([sentence2])
 
-    # Compute cosine similarity between the embeddings
     similarity_score = cosine_similarity(embeddings1, embeddings2)[0][0]
 
     return similarity_score
 
 
+q={}
 qa={}
 timer=4
+
+
+kw={}
+
+text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
+
+It can be broadly categorized into three types:
+
+Supervised Learning: Trains models on labeled data to predict or classify new, unseen data.
+Unsupervised Learning: Finds patterns or groups in unlabeled data, like clustering or dimensionality reduction.
+Reinforcement Learning: Learns through trial and error to maximize rewards, ideal for decision-making tasks.
+In addition these categories, there are also Semi-Supervised Learning and Self-Supervised Learning. 
+
+Semi-Supervised Learning uses a mix of labeled and unlabeled data, making it helpful when labeling data is costly or time-consuming. 
+Self-Supervised Learning creates its own labels from raw data, allowing it to learn patterns without needing labeled examples. 
+Machine Learning Pipeline
+Machine learning is fundamentally built upon data, which serves as the foundation for training and testing models. Data consists of inputs (features) and outputs (labels). A model learns patterns during training and is tested on unseen data to evaluate its performance and generalization. In order to make predictions, there are essential steps through which data passes in order to produce a machine learning model that can make predictions.'''
+
 question ="what is machine learning"
 #or question= "what subjects do you like?"
 #convert(question)
-kw={}
+text='i very much like machine learning'
 
+@app.route('/aspira', methods=['GET'])
 def aspira():
     #while(timer!=0):
         time-=1
-        text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
-
-    It can be broadly categorized into three types:
-
-    Supervised Learning: Trains models on labeled data to predict or classify new, unseen data.
-    Unsupervised Learning: Finds patterns or groups in unlabeled data, like clustering or dimensionality reduction.
-    Reinforcement Learning: Learns through trial and error to maximize rewards, ideal for decision-making tasks.
-    In addition these categories, there are also Semi-Supervised Learning and Self-Supervised Learning. 
-
-    Semi-Supervised Learning uses a mix of labeled and unlabeled data, making it helpful when labeling data is costly or time-consuming. 
-    Self-Supervised Learning creates its own labels from raw data, allowing it to learn patterns without needing labeled examples. 
-    Machine Learning Pipeline
-    Machine learning is fundamentally built upon data, which serves as the foundation for training and testing models. Data consists of inputs (features) and outputs (labels). A model learns patterns during training and is tested on unseen data to evaluate its performance and generalization. In order to make predictions, there are essential steps through which data passes in order to produce a machine learning model that can make predictions.'''
-        text='i very much like machine learning'
+        last_row = read_last_row('file/qa.csv')
+        if last_row:
+            value1, value2 = last_row  # Unpack the two values into separate variables
+            print(value1, value2)
+        else:
+            print("The file is empty or does not exist.")
+        
         #text='Not found'
         while(text == "Not found"):
             text=speech() 
@@ -68,12 +112,6 @@ def aspira():
             kw[key] = (score,sm)
             #value = my_dict.pop('b')
 
-            # print(f"{sm:.2f}:{score:.2f}:{key}")
-        #kw={name:kw.get(name,0)+keywords[name] for name in set(kw)| set(keywords)}
-        # sorted_scores = dict(sorted(kw.items(), key=lambda x: x[1], reverse=True))
-        # sorted_scores= dict(sorted(kw.items(), key=lambda x: (x[1][0], x[1][1]), reverse=True))
-
-        # Calculate the thresholds
         first_elements = [v[0] for v in kw.values()]
         second_elements = [v[1] for v in kw.values()]
 
@@ -84,12 +122,10 @@ def aspira():
         print(f"First threshold: {first_threshold}")
         print(f"Second threshold: {second_threshold}")
 
-        # Sorting based on custom conditions:
         sorted_scores = dict(sorted(kw.items(), key=lambda x: (
-            # Check if both values are high (greater than their respective thresholds)
         not (x[1][0] <= first_threshold and x[1][1] <= second_threshold), 
-            x[1][1],  # Then sort by the first element
-            x[1][0]  # Then sort by the second element
+            x[1][1],  #the first element
+            x[1][0]  #second element
         ), reverse=True))
 
 
@@ -99,7 +135,7 @@ def aspira():
             print(f"{f_score}:{key}")
         kw=sorted_scores
         count1=3
-        for  key , score in keywords.items() :
+        for  key , score in sorted_scores.items() :
             if score >= 2 and len(key.split(' ')) < 4   :
                 count1 -=1
                 if (count1==0):
@@ -126,10 +162,10 @@ def aspira():
                             #convert(l)
                             count+=1
                         score = compute_similarity(question, l)
-                        qa[l]=score
+                        q[l]=score
 
 
-        sorted_qa = dict(sorted(qa.items(), key=lambda x: x[1], reverse=True))
+        sorted_qa = dict(sorted(q.items(), key=lambda x: x[1], reverse=True))
         values = list(sorted_qa.values())
         # mean_value = sum(values) / len(values)
         centre_value=np.mean(values)
@@ -143,16 +179,13 @@ def aspira():
         convert(question)
         print(time.perf_counter()-start_time)
 
-        yield jsonify({'result':'stop'})
+        with open('qa.csv', 'a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([question, text])
+        return jsonify({'result':'stop'})
 
 
 
-
-
-                
-
-
-
-
-
-            
+if __name__ == '__main__':
+    app.run(debug=True)
+    aspira()
