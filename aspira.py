@@ -87,7 +87,6 @@ question ="what is machine learning"
 #convert(question)
 text='i very much like machine learning'
 
-@app.route('/aspira', methods=['GET'])
 def aspira():
     #while(timer!=0):
         time-=1
@@ -182,9 +181,12 @@ def aspira():
         with open('qa.csv', 'a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([question, text])
-        return jsonify({'result':'stop'})
+        return 'stop'
 
-
+@app.route('/run-function', methods=['GET'])
+def run_function():
+    result = aspira()
+    return jsonify({'result': result})
 
 if __name__ == '__main__':
     app.run(debug=True)
