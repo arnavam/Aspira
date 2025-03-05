@@ -65,11 +65,11 @@ def compute_similarity(sentence1, sentence2):
 
 
 def aspira():
+    #
     #while(timer!=0):
         # timer-=1
         q={}
-        qa={}
-        timer=4
+        
 
 
         kw={}
@@ -184,11 +184,11 @@ def aspira():
             writer.writerow([question, text])
         return 'stop'
 
-# @app.route('/run-function', methods=['GET'])
+@app.route('/run-function', methods=['GET'])
 def run_function():
     result = aspira()
     return jsonify({'result': result})
 
 if __name__ == '__main__':
-    app.run(debug=True)
-    aspira()
+    # app.run(debug=True)
+    # aspira()
