@@ -5,7 +5,7 @@ import time
 def convert(text):
     start_time=time.time()
     mp3_path = "file/temp_audio.mp3"
-    output_wav_path="Wav2Lip/file/test.wav"
+    output_wav_path="Wav2Lip/filelists/test.wav"
     tts = gTTS(text=text, lang='en', slow=False)  # slow=False for faster speech
     tts.save(mp3_path)
 
