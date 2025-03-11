@@ -136,7 +136,7 @@ def aspira():
         kw=sorted_scores
         count1=3
         for  key , score in sorted_scores.items() :
-            if score[0] >= 4 and len(key.split(' ')) < 4   :
+            if score[0] >= 2 and len(key.split(' ')) < 4   :
                 count1 -=1
                 if (count1==0):
                     break
@@ -190,5 +190,6 @@ def run_function():
     return jsonify({'result': result})
 
 if __name__ == '__main__':
-    # app.run(debug=True)
-    # aspira()
+    app.run(debug=True)
+# aspira() 
+
