@@ -3,11 +3,11 @@
 to setup the conda enviornement
 1. setup the conda enviornment
 2. run following commands
-    - if possible ``` conda create -f enviornment.yml ```
-    - if not working or not possible 
-        ``` conda create -n aspira1 ```
-        ``` conda activate aspira1 ```
-    paste the commands following according the number and other commands if required
+    - if possible run  ``` conda create -f enviornment.yml ```
+    - if not working or not possible  run
+       -  ``` conda create -n aspira1 ```
+       - ``` conda activate aspira1 ```
+    paste the  following commands according to the  number and other commands if required
 
         - conda config --add channels conda-forge 0 
 
