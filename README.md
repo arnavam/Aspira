@@ -7,6 +7,7 @@ to setup the conda enviornement
     - if not working or not possible  run
        -  ``` conda create -n aspira1 ```
        - ``` conda activate aspira1 ```
+
     paste the  following commands according to the  number and other commands if required
 
         - conda config --add channels conda-forge 0 
