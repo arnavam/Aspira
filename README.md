@@ -31,7 +31,8 @@ to setup the conda enviornement
         - conda install conda-forge::rake_nltk  4.
         - conda install spacy
         `conda install conda-forge::spacy-model-en_core_web_sm` 10
-        **<u>searc&h engine</u>**
+
+      **<u>search engine</u>**
 
         - conda install requests
         - pip install duckduckgo_search 4.5
