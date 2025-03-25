@@ -17666,6 +17666,7 @@ data reporting analyst
 data reviewer
 data review specialist
 data science and iot manager
+data science
 data sciences director
 data scientist
 data security administrator
