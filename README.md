@@ -1,7 +1,7 @@
 # AI_interviewer
 
 to setup the conda enviornement
-1. download and setup conda  in you system
+1. download and setup conda  in your system
 2. run following commands
     - if possible run  ``` conda create -f enviornment.yml ```
     - if not working or not possible  run
