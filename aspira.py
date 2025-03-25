@@ -8,7 +8,6 @@ from speaker import convert
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-# Initialize the model
 import time
 from flask import Flask, jsonify
 import os
@@ -30,15 +29,12 @@ import csv
 # # Print the loaded dictionary
 # print(loaded_data)
 def read_last_row(file_path):
-# Check if the file exists and is not empty
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         with open(file_path, newline='') as csvfile:
             reader = csv.reader(csvfile)
             
-            # Read all rows and store them in a list
             rows = list(reader)
             
-            # Get the last row
             last_row = rows[-1]
             
             return last_row            
@@ -63,15 +59,12 @@ def compute_similarity(sentence1, sentence2):
 
 
 
-
 def aspira():
     #
     #while(timer!=0):
         # timer-=1
-        q={}
-        
-
-
+        q ={}
+        qa={}
         kw={}
         text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
 
@@ -91,12 +84,12 @@ def aspira():
         #or question= "what subjects do you like?"
         #convert(question)
         # text='i very much like machine learning'
-        last_row = read_last_row('file/qa.csv')
-        if last_row:
-            value1, value2 = last_row  # Unpack the two values into separate variables
-            print(value1, value2)
-        else:
-            print("The file is empty or does not exist.")
+        # last_row = read_last_row('file/qa.csv')
+        # if last_row:
+        #     value1, value2 = last_row  # Unpack the two values into separate variables
+        #     print(value1, value2)
+        # else:
+        #     print("The file is empty or does not exist.")
         
         #text='Not found'
         while(text == "Not found"):
@@ -118,7 +111,6 @@ def aspira():
         first_threshold = sorted(first_elements)[len(first_elements) // 2]  # Middle of first elements
         second_threshold = sorted(second_elements)[len(second_elements) // 2]  # Middle of second elements
 
-        # Print the thresholds for clarity
         print(f"First threshold: {first_threshold}")
         print(f"Second threshold: {second_threshold}")
 
@@ -158,6 +150,7 @@ def aspira():
                         
                     for i in range(min(len(chunks),5)):
                         l=chatbot(chunks[i])
+                        qa[l]=chunks[i]
                         while(count!=3):
                             #convert(l)
                             count+=1
@@ -165,24 +158,24 @@ def aspira():
                         q[l]=score
 
 
-        sorted_qa = dict(sorted(q.items(), key=lambda x: x[1], reverse=True))
-        values = list(sorted_qa.values())
+        sorted_q = dict(sorted(q.items(), key=lambda x: x[1], reverse=True))
+        values = list(sorted_q.values())
         # mean_value = sum(values) / len(values)
         centre_value=np.mean(values)
-        closest_key = min(sorted_qa, key=lambda k: abs(sorted_qa[k] - centre_value))
+        closest_key = min(sorted_q, key=lambda k: abs(sorted_q[k] - centre_value))
         print('Selected Question')
         print('-'*50)
-        print(f"{sorted_qa[closest_key]:.2f}:{closest_key}")
+        print(f"{sorted_q[closest_key]:.2f}:{closest_key}")
         question=closest_key
         print(time.perf_counter()-start_time)
 
         convert(question)
         print(time.perf_counter()-start_time)
 
-        with open('file/qa.csv', 'a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([question, text])
-        return 'stop'
+        # with open('file/qa.csv', 'a', newline='') as file:
+        #     writer = csv.writer(file)
+        #     writer.writerow([question, qa[question]])
+        return question
 
 @app.route('/run-function', methods=['GET'])
 def run_function():
