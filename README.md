@@ -64,3 +64,4 @@ to setup the conda enviornement
 
         *pdf*
         - pip install pyMuPDF 13
+aspira.py is the main file so to run that file or  you can run `python aspira.py`
