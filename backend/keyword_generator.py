@@ -9,17 +9,17 @@ import spacy
 from spacy.cli import download
 
 # Load the pre-trained spaCy model
-# nlp = spacy.load("en_core_web_sm")
+# nlp = spacy.load("en_core_web_trf")
 try:
-    nlp = spacy.load("en_core_web_trf")
+    nlp = spacy.load("en_core_web_sm")
 except OSError:
-    download("en_core_web_trf")
-    nlp = spacy.load("en_core_web_trf")
+    download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
 
-# nltk.download('stopwords',download_dir='file')
-# nltk.download('punkt',download_dir='file')
-# # nltk.download('punkt_tab',download_dir='~/Developer/Ai_interviewer')
-# nltk.download('punkt_tab')
+nltk.download('stopwords',download_dir='file')
+nltk.download('punkt',download_dir='file')
+# nltk.download('punkt_tab',download_dir='~/Developer/Ai_interviewer')
+nltk.download('punkt_tab')
 
 
 
