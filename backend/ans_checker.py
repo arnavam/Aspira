@@ -1,20 +1,20 @@
-import language_tool_python
+# import language_tool_python
 from textblob import TextBlob
 import textstat
 
-tool = language_tool_python.LanguageTool('en-US')
+# tool = language_tool_python.LanguageTool('en-US')
 
 
-def correcting(text):
-    matches = tool.check(text)
+# def correcting(text):
+#     matches = tool.check(text)
 
-    corrected_paragraph = language_tool_python.utils.correct(text, matches)
-    # for match in matches:
-    #     print(f"Error: {match.message}")
-    #     print(f"Context: {match.context}")
-    #     print(f"Suggested correction: {match.replacements}\n")
+#     corrected_paragraph = language_tool_python.utils.correct(text, matches)
+#     # for match in matches:
+#     #     print(f"Error: {match.message}")
+#     #     print(f"Context: {match.context}")
+#     #     print(f"Suggested correction: {match.replacements}\n")
 
-    return corrected_paragraph
+#     return corrected_paragraph
 
 def scoring(text):
 

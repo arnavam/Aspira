@@ -1,0 +1,31 @@
+conda create -n aspira3 python=3.11 -y
+conda activate aspira3
+
+conda install pytorch::pytorch -y
+conda install pytorch::torchvision -y
+conda install SpeechRecognition -y          
+conda install nltk -y                        
+conda install conda-forge::rake_nltk -y     
+conda install beautifulsoup4 -y              
+conda install conda-forge::transformers -y  
+conda install conda-forge::gtts -y           
+conda install conda-forge::pydub -y          
+conda install conda-forge::opencv -y          
+conda install conda-forge::librosa -y         
+pip install git+https://github.com/elliottzheng/batch-face.git@master   
+pip install pyMuPDF                         
+conda install keybert -y
+conda install spacy -y
+
+---
+
+conda remove --n aspira --all
+conda clean --all
+
+
+
+""
+
+Start-Process -FilePath "C:\Users\ARAV\miniconda3\Uninstall-Miniconda3.exe" -ArgumentList "/S", "/RemoveCaches=1", "/RemoveConfigFiles=all", "/RemoveUserData=1" -Wait
+
+
