@@ -23,6 +23,9 @@ conda remove --n aspira --all
 conda clean --all
 
 
+---
+
+conda env update --file environment.yml  --prune
 
 ""
 
