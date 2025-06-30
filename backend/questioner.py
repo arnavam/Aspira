@@ -1,9 +1,9 @@
-from recorder import speech
+from backend.B_recorder import speech
 from keyword_generator import extract , is_job
-from Search_Engine import search  
-from Parser import Parse 
-from chatbot import chatbot , similarity_score
-from Summaraizer import split_text_into_chunks,summrize
+from backend.f_Search_Engine import search  
+from backend.g_Parser import Parse 
+from backend.I_chatbot import chatbot , similarity_score
+from backend.h_Summaraizer import split_text_into_chunks,summrize
 from speaker import convert
 from ans_checker import scoring ,scoring2
 

@@ -1,8 +1,7 @@
-conda create -n aspira3 python=3.11 -y
-conda activate aspira3
+conda create -n aspira1 python=3.11 -y
+conda activate aspira1
 
 conda install pytorch::pytorch -y
-conda install pytorch::torchvision -y
 conda install SpeechRecognition -y          
 conda install nltk -y                        
 conda install conda-forge::rake_nltk -y     
@@ -17,9 +16,47 @@ pip install pyMuPDF
 conda install keybert -y
 conda install spacy -y
 
+conda install -c conda-forge textblob -y
+conda install -c conda-forge textstat -y
+conda install -c conda-forge wikipedia -y
+conda install -c conda-forge wikipedia-api -y
+conda install -c conda-forge flask-cors -y
+
+python -m nltk.downloader -d stopwords punkt punkt_tab
+python -m spacy download en_core_web_sm
+
+
+---
+mamba create -n aspira1 python=3.11 -y
+mamba activate aspira1
+
+mamba install pytorch::pytorch -y
+mamba install SpeechRecognition -y          
+mamba install nltk -y                        
+mamba install conda-forge::rake_nltk -y     
+mamba install beautifulsoup4 -y              
+mamba install conda-forge::transformers -y  
+mamba install conda-forge::gtts -y           
+mamba install conda-forge::pydub -y          
+mamba install conda-forge::opencv -y          
+mamba install conda-forge::librosa -y         
+
+pip install git+https://github.com/elliottzheng/batch-face.git@master   
+pip install pyMuPDF                         
+pip install duckduckgo-search
+
+mamba install keybert -y
+mamba install spacy -y
+
+mamba install textblob -y
+mamba install textstat -y
+mamba install wikipedia -y
+mamba install wikipedia-api -y
+mamba install flask-cors -y
+
 ---
 
-conda remove --n aspira --all
+conda remove -n aspira3 --all
 conda clean --all
 
 

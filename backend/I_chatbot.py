@@ -1,9 +1,9 @@
-import torch
-
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-import time
 from sentence_transformers import SentenceTransformer
+import torch.nn.functional as F
 import numpy as np
+import torch
+import time
 
 from huggingface_hub import login
 with open('tokens/hugging.txt', 'r') as file:
@@ -16,14 +16,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 tokenizer = AutoTokenizer.from_pretrained("p208p2002/bart-squad-qg-hl")
 model_chat = AutoModelForSeq2SeqLM.from_pretrained("p208p2002/bart-squad-qg-hl")
-# tokenizer = AutoTokenizer.from_pretrained("p208p2002/t5-squad-qg-hl")
-# model = AutoModelForSeq2SeqLM.from_pretrained("p208p2002/t5-squad-qg-hl")
-# model=torch.jit.script(model).to_device(device)
+
+
 model_chat.eval()
 
 
-import torch
-import time
 
 def chatbot(input_text_batch):
     # Start measuring time
@@ -34,14 +31,13 @@ def chatbot(input_text_batch):
         input_text_batch, 
         return_tensors="pt", 
         padding=True,   # Pads sequences to the longest length in the batch
-        truncation=True, # Optionally truncate if sequences are too long
-        max_length=100  # Optional: specify max length
+        truncation=True, #  truncates if sequences are too long
+        max_length=100  # specify max length
     ).to(device)
 
-    # Generate output for each input in the batch
     with torch.no_grad():
         output_ids = model_chat.generate(
-            input_ids['input_ids'],  # Use the 'input_ids' from batch_encode_plus
+            input_ids['input_ids'],  #Use the 'input_ids' from batch_encode_plus
             max_length=100, 
             num_return_sequences=1, 
             no_repeat_ngram_size=2, 
@@ -51,51 +47,35 @@ def chatbot(input_text_batch):
             do_sample=True
         )
 
-    # Decode the output texts
     generated_texts = [tokenizer.decode(output, skip_special_tokens=True) for output in output_ids]
 
-    # Print the generated responses
     for text in generated_texts:
         print(text)
     
-    # Print time taken for the batch processing
     print(f"Time taken for batch processing: {time.time() - start_time:.4f} seconds")
     
     return generated_texts
 
 
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 model_sim = SentenceTransformer('all-MiniLM-L6-v2',device=device)
 
-def similarity_score(sentence1, sentence2):
-    embeddings1 = model_sim.encode([sentence1])
-    embeddings2 = model_sim.encode([sentence2])
 
-    similarity_score = cosine_similarity(embeddings1, embeddings2)[0][0]
-
-    return similarity_score.item()
-
-
-
-# Load model once (outside the function)
-
-def similarity_score2(target_sentence, other_sentences):
-
-    # Encode target once
+def similarity_score(target_sentence, other_sentences):
     target_embedding = model_sim.encode([target_sentence], convert_to_tensor=True)
-    
-    # Batch encode all other sentences
     other_embeddings = model_sim.encode(other_sentences, convert_to_tensor=True, batch_size=128)
-    
-    # Compute cosine similarity using matrix multiplication
-    similarities = np.dot(target_embedding.cpu().numpy(), 
-                         other_embeddings.cpu().numpy().T).flatten()
-    
-    return {sentence: float(score) 
-            for sentence, score in zip(other_sentences, similarities)}
-# from sentence_transformers import SentenceTransformer
+
+    # Normalize embeddings
+    target_embedding = F.normalize(target_embedding, p=2, dim=1)
+    other_embeddings = F.normalize(other_embeddings, p=2, dim=1)
+
+    # Compute cosine similarities
+    similarities = torch.matmul(target_embedding, other_embeddings.T).squeeze(0)
+
+    return {sentence: float(score) for sentence, score in zip(other_sentences, similarities)}
+
+
+
 # from sklearn.cluster import DBSCAN
 # from sklearn.metrics.pairwise import cosine_similarity
 # import numpy as np
