@@ -1,5 +1,5 @@
-from keyword_generator import is_job
-from chatbot import similarity_score
+from D_keyword_generator import is_job
+from I_chatbot import similarity_score
 
 import wikipedia
 import wikipediaapi
