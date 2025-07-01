@@ -1,16 +1,14 @@
 from transformers import pipeline
 from textblob import TextBlob
+from sklearn.metrics.pairwise import cosine_similarity
+import spacy
+import networkx as nx
+import numpy as np
+
+
 
 
 def split_text_into_chunks(text, max_tokens=1024):
-        # Approximate word tokenization: 1 token ≈ 3/4 of a word
-        words = text.split()
-        max_words_per_chunk = max_tokens * 3 // 4
-        chunks = [words[i:i+max_words_per_chunk] for i in range(0, len(words), max_words_per_chunk)]
-        return [" ".join(chunk) for chunk in chunks]
-
-
-def split_text_into_sentence_chunks(text, max_tokens=1024):
 
     blob = TextBlob(text)
     sentences = [str(sentence).strip() for sentence in blob.sentences]
@@ -39,6 +37,29 @@ def split_text_into_sentence_chunks(text, max_tokens=1024):
 
 
 
+nlp = spacy.load("en_core_web_md")
+
+def textrank(text):
+    doc = nlp(text)
+    sentences = list(doc.sents)
+
+    sentence_vectors = [sent.vector for sent in sentences]
+
+    sim_matrix = cosine_similarity(sentence_vectors)
+    nx_graph = nx.from_numpy_array(sim_matrix)
+
+    scores = nx.pagerank(nx_graph)
+
+    ranked = sorted(((str(sent), scores[i]) for i, sent in enumerate(sentences)),key=lambda item: item[1],reverse=True)
+    
+    top_sent = ranked[:int(len(ranked)*0.4)]
+
+#     print("🧠 Top Ranked Sentences (Semantic TextRank):\n")
+#     for i, (score, sent) in enumerate(ranked[:3]):
+#         print(f"{i+1}. {sent.strip()} (Score: {score:.4f})")
+
+    return dict(top_sent)
+
 
 def summrize(text,max_tokens=200):
 
@@ -60,7 +81,8 @@ if __name__=='__main__':
         Anyone with internet access can write and make changes to Wikipedia articles, except in limited cases where editing is restricted to prevent disruption or vandalism.
         """
 
-        chunks = split_text_into_sentence_chunks(large_text, max_tokens=50)
+        chunks = split_text_into_chunks(large_text, max_tokens=50)
         print(f"Total chunks: {len(chunks)}{type(chunks)}")
         for i, chunk in enumerate(chunks, 1):
                 print(f"\nChunk {i}:\n{chunk}")
+        sent=textrank(large_text)

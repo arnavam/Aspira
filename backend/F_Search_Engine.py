@@ -13,7 +13,7 @@ logger.debug("This is a test log message")
 
 a = []
 exclude_domains = ['reddit', 'coursera']
-include_domains = ['wikipedia',]
+include_domains = []
 exclude_title = ['course', 'tutorial']
 
 instance = DDGS()

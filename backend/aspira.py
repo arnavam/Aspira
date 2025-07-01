@@ -1,10 +1,10 @@
 from B_recorder import speech
 from C_ans_checker import scoring ,scoring2
-from D_keyword_generator import extract ,keyword_extraction, is_job
+from D_keyword_generator import keyword_extraction, is_job
 from E_job_wikidata import  job_links     
 from F_Search_Engine import search  
 from G_Parser import Parse 
-from H_Summaraizer import split_text_into_chunks,summrize
+from H_Summaraizer import split_text_into_chunks,textrank
 from I_chatbot import chatbot ,similarity_score
 from J_speaker import convert
 import numpy as np
@@ -12,13 +12,10 @@ import heapq
 import logging
 import time
 from flask import Flask, jsonify,request
-import os
-import csv
+
 from flask_cors import CORS
 
-import warnings
 import logging
-import sys
 
 logging.basicConfig(
     level=logging.INFO,  
@@ -71,9 +68,9 @@ Q={}
 TEXTBOOK={}
 
 def aspira(answer):
-        
-  #while(timer!=0):
-    # timer-=1
+  timer-=1
+
+  while(timer!=0):
     global QA
     global KW 
     global TEXTBOOK
@@ -98,8 +95,8 @@ def aspira(answer):
     # last_row = read_last_row('file/qa.csv')
 
     if QA:
-        question, actual_answer = list(QA.items())[-1]  
-        logger.info(question, actual_answer)
+        question, answer = list(QA.items())[-1]  
+        logger.info(question, answer)
     else:
         logger.info("The dictionary is empty")
 
@@ -156,40 +153,58 @@ def aspira(answer):
                 break
 
             # links = job_links(key,no=3) if is_job(key) else search(key,no=3)
-            links = search(key,no=3,items=['interview questions']) if is_job(key) else search(key,no=3)
+            corpus=[]
+            links = search(key,no=3,items=['interview questions','questions for interviews']) if is_job(key) else search(key,no=3)
             for  no , link in enumerate(links,1):
+                # print('ok')
                 text =Parse(link)
+                # print('ok')
                 if text == 'skip' or text is None:
                     continue
 
                 TEXTBOOK[link]=text
-                chunks = split_text_into_chunks(text, max_tokens=200)
-                chunks_dict=similarity_score(key,chunks)
-                sorted_chunks = sorted(chunks_dict.items(), key=lambda x: x[1])
-                
-                sorted_chunks = sorted_chunks[int(len(sorted_chunks)*0.4):]
-                
-                chunks = dict(sorted_chunks)
-                logger.info(len(chunks))
-                # chunks=chunks.keys()
-                # chunks=chunks[:min(len(chunks),5)]
-                # logger.info(chunks)
-                questions=chatbot(list(chunks.keys()))
-                q_dict=similarity_score(question,questions)
-                q.update(q_dict)
-                qa.update({question:chunk for question, chunk in zip(questions,chunks.keys())})
+                corpus_dict=textrank(text)
+                corpus.extend(list(corpus_dict.keys()))
+                logger.info(len(corpus_dict))
 
+                # chunks.extend(split_text_into_chunks(text, max_tokens=200))
+                print('ok')
+            logger.info(len(corpus))
+            # chunks_dict=similarity_score(key,chunks)            
 
-            
-        
+            chunks=split_text_into_chunks('.'.join(corpus))
+            # print(chunks)
+            questions=chatbot(chunks)
+            q_dict=similarity_score(question,questions)
+            q.update(q_dict)
+            qa.update({question:chunk for question, chunk in zip(questions,chunks)})
 
     # sorted_q = dict(sorted(q.items(), key=lambda x: x[1], reverse=True))
     print(q)
 
-    centre_value=1#np.mean(q.values())
+    centre_value=np.mean(q.values())
     # closest_key = min(q, key=lambda k: abs(q[k] - centre_value))
 
-    closest_key = heapq.nsmallest(3, q.items(), key=lambda item: abs(item[1] - centre_value))[-1][0]
+    closest_key = heapq.nsmallest(3, q.items(), key=lambda item: abs(item[1])- centre_value)[2][0]# 
+    # def select_keys_by_value(d):
+    #     mid_range = {k: v for k, v in d.items() if 0.2 <= v <= 0.8}
+    #     low_range = {k: v for k, v in d.items() if v < 0.2}
+    #     high_range = {k: v for k, v in d.items() if v > 0.8}
+
+    #     if mid_range:
+    #         # Return all keys with values in median range
+    #         return list(mid_range.keys())
+    #     elif low_range:
+    #         # Return all keys with the max value under 0.2
+    #         max_low = max(low_range.values())
+    #         return [k for k, v in low_range.items() if v == max_low]
+    #     elif high_range:
+    #         # Return all keys with the min value above 0.8
+    #         min_high = min(high_range.values())
+    #         return [k for k, v in high_range.items() if v == min_high]
+    #     else:
+    #         return []
+
 
     print('Selected Question')
     print('-'*50)
@@ -197,7 +212,7 @@ def aspira(answer):
 
     question=closest_key
     print(time.perf_counter()-start_time)
-    convert(question)
+    # convert(question)
     print(time.perf_counter()-start_time)
 
 
