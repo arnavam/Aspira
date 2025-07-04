@@ -1,10 +1,11 @@
+```
 conda create -n aspira1 python=3.11 -y
 conda activate aspira1
 
 conda install pytorch::pytorch -y
 conda install SpeechRecognition -y          
 conda install nltk -y                        
-conda install conda-forge::rake_nltk -y     
+conda install yake -y
 conda install beautifulsoup4 -y              
 conda install conda-forge::transformers -y  
 conda install conda-forge::gtts -y           
@@ -23,10 +24,12 @@ conda install -c conda-forge wikipedia-api -y
 conda install -c conda-forge flask-cors -y
 
 python -m nltk.downloader -d stopwords punkt punkt_tab
-python -m spacy download en_core_web_sm
-
+python -m spacy download en_core_web_md
+```
 
 ---
+
+```
 mamba create -n aspira1 python=3.11 -y
 mamba activate aspira1
 
@@ -54,12 +57,15 @@ mamba install wikipedia -y
 mamba install wikipedia-api -y
 mamba install flask-cors -y
 
+python -m nltk.downloader -d stopwords punkt punkt_tab
+python -m spacy download en_core_web_md
+```
 ---
-
-conda remove -n aspira3 --all
+```
+conda remove -n aspira1 --all
 conda clean --all
 
-
+```
 ---
 
 conda env update --file environment.yml  --prune
