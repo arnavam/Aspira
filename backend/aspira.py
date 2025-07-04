@@ -67,10 +67,11 @@ QA={}
 Q={}
 TEXTBOOK={}
 
-def aspira(answer):
-  timer-=1
+def aspira(answer="i would like to become an accountant"):
+#   timer =3
 
-  while(timer!=0):
+#   while(timer!=0):
+#     timer-=1
     global QA
     global KW 
     global TEXTBOOK
@@ -84,7 +85,6 @@ def aspira(answer):
     # question="what do you know about machine learning?"
 
     question ="which job would you  prefer?"
-    answer="i would like to become an accountant"
     
     if answer==None:
         convert(question)
@@ -228,6 +228,6 @@ def run_function():
     return jsonify({'result': result})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
 # aspira()
 
