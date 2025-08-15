@@ -35,6 +35,8 @@ if not logger.hasHandlers():
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+# CORS(app)
+
 start_time=time.perf_counter()
 
 
@@ -103,6 +105,8 @@ def aspira(answer="i would like to become an accountant"):
     #Divide old values by 2 to reduce there relevancy
     if KW:
         KW = {key: (a/2,b/2) for key,(a,b) in KW.items()}
+    else:
+        KW={}
 
 
     
@@ -122,11 +126,15 @@ def aspira(answer="i would like to become an accountant"):
     scores = list(keywords.values())
 
     sims = similarity_score(question, keys) 
-
+    print(KW)
+    print(keys)
+    print(scores)
     for key, score in zip(keys, scores):
         sm = sims[key]
         if key in KW:
             KW[key][0] += score
+            print('key',key)
+            print('KW,',KW)
             KW[key][1] += sm
         else:
             KW[key] = [score, sm]
@@ -182,7 +190,9 @@ def aspira(answer="i would like to become an accountant"):
     # sorted_q = dict(sorted(q.items(), key=lambda x: x[1], reverse=True))
     print(q)
 
-    centre_value=np.mean(q.values())
+    # centre_value=np.mean(q.values())
+    centre_value = np.mean(list(q.values()))
+
     # closest_key = min(q, key=lambda k: abs(q[k] - centre_value))
 
     closest_key = heapq.nsmallest(3, q.items(), key=lambda item: abs(item[1])- centre_value)[2][0]# 
@@ -221,7 +231,7 @@ def aspira(answer="i would like to become an accountant"):
 
 @app.route('/run-function', methods=['GET'])
 def run_function():
-    param_value = request.args.get('param', default="default_value") 
+    param_value = request.args.get('param', default="i would like to become an accountant") 
     print(param_value) # Get parameter from URL.
     result = aspira(param_value)  
 
@@ -229,5 +239,7 @@ def run_function():
 
 if __name__ == '__main__':
     app.run(debug=False, port=5000)
+    # app.run(host='0.0.0.0')
+
 # aspira()
 
