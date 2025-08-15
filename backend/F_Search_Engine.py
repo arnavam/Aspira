@@ -11,7 +11,6 @@ if not logger.hasHandlers():
 
 logger.debug("This is a test log message")
 
-a = []
 exclude_domains = ['reddit', 'coursera']
 include_domains = []
 exclude_title = ['course', 'tutorial']
@@ -19,6 +18,7 @@ exclude_title = ['course', 'tutorial']
 instance = DDGS()
 
 def search(search_query='Machine Learning', no=2,items=[]):
+    a = []
     include_domains.extend(items)
 
     start_time = time.time()
@@ -26,7 +26,7 @@ def search(search_query='Machine Learning', no=2,items=[]):
         results = instance.text(
             keywords=search_query,
             safesearch='off',
-            timelimit='7d',
+            timelimit='w',
             max_results=no
         )
         
@@ -36,7 +36,7 @@ def search(search_query='Machine Learning', no=2,items=[]):
                 I = instance.text(
                     keywords=name,
                     safesearch='off',
-                    timelimit='7d',
+                    timelimit='w',
                     max_results=1
                 )
                 # Add results to the main results list (make sure it's a list of dictionaries)
@@ -66,6 +66,12 @@ def search(search_query='Machine Learning', no=2,items=[]):
         logger.warning("Retry...")
 
     logger.warning(time.time() - start_time)
+    if not a:
+        logger.error("No valid links found after applying filters.")
+        print("No valid links found. Please try a different search query.")
+        # Optionally raise an error
+        # raise ValueError("No results found.")
+
     return a
 if __name__ == "__main__":
-    search_results = search('Machine Learning', no=2)
+    search_results = search('Machine Learning', no=10)

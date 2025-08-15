@@ -1,6 +1,7 @@
 from textblob import TextBlob
 import textstat
-
+import nltk
+nltk.download('punkt_tab')
 
 def correcting2 (text):
     words=[]
