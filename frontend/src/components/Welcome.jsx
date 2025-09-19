@@ -8,7 +8,7 @@ const Background = styled(Box)({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: `url('https://venturebeat.com/wp-content/uploads/2024/05/nuneybits_A_split-screen_image_depicting_two_contrasting_interv_b0e9e4f5-d132-4250-9c46-ce9a02dfb440-transformed.webp?w=750') no-repeat center center/cover`,
+  background: `url('ai_background.jpg') no-repeat center center/cover`,
 });
 
 const StyledCard = styled(Card)({

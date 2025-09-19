@@ -8,6 +8,7 @@ import Interface from "./components/Interface";
 import Home from "./components/Home";
 import Rank from "./components/Rank";
 import Welcome from "./components/Welcome";
+import Resume from "./components/Resume";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -33,6 +34,12 @@ function App() {
         <Route
           path="/home"
           element={isAuthenticated ? <Home /> : <Navigate to="/signin" replace />}
+        />
+
+        {/* Resume Upload */}
+        <Route
+          path="/resume"
+          element={isAuthenticated ? <Resume /> : <Navigate to="/signin" replace />}
         />
 
         {/* Mock Interview */}
