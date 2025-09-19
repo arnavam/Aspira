@@ -43,7 +43,8 @@ const Home = () => {
   const isGuest = username === 'Guest';
 
   const handleMockInterview = () => {
-    navigate('/mock-interview');
+    // navigate('/mock-interview');
+    navigate('/resume');
   };
 
   return (

@@ -10,6 +10,11 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { styled } from "@mui/material/styles";
 import axios from "axios";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+import mammoth from "mammoth";
+
+// ✅ must be a string URL, not undefined or object
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 // ========== Question Banks ==========
 const getBehavioralQuestions = () => [
@@ -117,8 +122,80 @@ const Interface = () => {
   const [questionget, setQuestionget] = useState("");
   const videoRef = useRef(null);
   const [videoname, setVideoname] = useState("/result_voice.mp4");
-
+  const [resume, setResume] = useState("");
   const { state } = useLocation();
+  // console.log(state)
+  useEffect(() => {
+  if (state?.resume) {
+    fileToText(state.resume)
+      .then((text) => {
+        setResume(text); // schedules update
+      })
+      .catch((err) => console.error("Error reading file:", err));
+  }
+}, [state?.resume]);
+
+// useEffect(() => {
+//   if (resume) {
+//     console.log("Resume state updated:", resume); // runs *after* setResume completes
+//   }
+// }, [resume]);
+
+  // helper function
+  const fileToText = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      // handle plain text
+      if (file.type === "text/plain") {
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+      }
+      // handle PDF
+      else if (file.type === "application/pdf") {
+        const readerForPdf = new FileReader();
+        readerForPdf.onload = async (e) => {
+          const typedarray = new Uint8Array(e.target.result);
+          const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+          let text = "";
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const pageText = content.items.map((item) => item.str).join(" ");
+            text += pageText + "\n";
+          }
+          resolve(text);
+        };
+        readerForPdf.onerror = reject;
+        readerForPdf.readAsArrayBuffer(file);
+      }
+      // handle DOCX
+      else if (
+        file.type ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ) {
+        import("mammoth").then((mammoth) => {
+          const readerForDocx = new FileReader();
+          readerForDocx.onload = async (e) => {
+            try {
+              const arrayBuffer = e.target.result;
+              const result = await mammoth.extractRawText({ arrayBuffer });
+              resolve(result.value);
+            } catch (err) {
+              reject(err);
+            }
+          };
+          readerForDocx.onerror = reject;
+          readerForDocx.readAsArrayBuffer(file);
+        });
+      } else {
+        reject(new Error("Unsupported file type: " + file.type));
+      }
+    });
+  };
+
+  const formData = new FormData();
 
   const handleReplay = () => {
     if (videoRef.current) {
@@ -129,8 +206,8 @@ const Interface = () => {
   // Initialize speech and question bank
 
   const handleNextQuestion = () => {
-    console.log("hai");
-    callquestion(answer)
+    // console.log("hai");
+    callquestion("", state.answers[0])
       .then(() => {
         setVideoname(`/result_voice.mp4?timestamp=${Date.now()}`); // Forces React to detect a change
         if (videoRef.current) {
@@ -141,10 +218,12 @@ const Interface = () => {
       .catch((err) => console.error("Error:", err));
   };
 
-  const callquestion = (param) => {
-    const apiUrl = `http://localhost:5000/run-function?param=${param}`;
+  const callquestion = (resume, answer) => {
+    // console.log(resume)
+    // console.log(answer)
+    const apiUrl = "http://localhost:5000/run-function";
     return axios
-      .get(apiUrl)
+      .get(apiUrl,{params:{param1:resume,param2:answer}})
       .then((response) => {
         setVideoname("/result_voice.mp4");
         console.log(response.data);
@@ -157,6 +236,35 @@ const Interface = () => {
         console.error("Error fetching data:", error);
       });
   };
+
+  //   const callquestion = async (payload, withFile = false) => {
+  //   try {
+  //     let response;
+
+  //     if (withFile) {
+  //       // --- FormData when sending files ---
+  //       const formData = new FormData();
+  //       formData.append("answers", JSON.stringify(payload.answers));
+  //       formData.append("resume", payload.resume);
+
+  //       response = await axios.post("http://localhost:5000/run-function", formData, {
+  //         headers: { "Content-Type": "multipart/form-data" },
+  //       });
+  //     } else {
+  //       // --- JSON when sending strings only ---
+  //       response = await axios.post("http://localhost:5000/run-function", payload, {
+  //         headers: { "Content-Type": "application/json" },
+  //       });
+  //     }
+
+  //     console.log(response.data);
+  //     setVideoname("/result_voice.mp4");
+  //     setIsInterviewStarted(true);
+  //     setQuestionget(response.data);
+  //   } catch (error) {
+  //     console.error("Error fetching data:", error);
+  //   }
+  // };
 
   useEffect(() => {
     const { synth, recognition } = initializeSpeech();
@@ -330,7 +438,7 @@ const Interface = () => {
                 <Button
                   variant="contained"
                   onClick={async () => {
-                    callquestion(state[0]);
+                    callquestion(resume, state.answers[0]);
                   }}
                   sx={{
                     backgroundColor: "#00c6ff",

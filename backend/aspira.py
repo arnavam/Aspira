@@ -12,6 +12,8 @@ import heapq
 import logging
 import time
 from flask import Flask, jsonify,request
+from flask_bcrypt import Bcrypt
+from db import users_collection
 
 from flask_cors import CORS
 
@@ -34,6 +36,7 @@ if not logger.hasHandlers():
 
 
 app = Flask(__name__)
+bcrypt = Bcrypt(app)
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 # CORS(app)
 
@@ -231,11 +234,46 @@ def aspira(answer="i would like to become an accountant"):
 
 @app.route('/run-function', methods=['GET'])
 def run_function():
-    param_value = request.args.get('param', default="i would like to become an accountant") 
-    print(param_value) # Get parameter from URL.
-    result = aspira(param_value)  
+
+    param1 = request.args.get('param1', default="")                                                        #das
+    param2 = request.args.get('param2', default="i would like to become an accountant")                    #das
+
+    # param_value = request.args.get('param', default="i would like to become an accountant")
+    
+    print("This is resume : ",param1,"\n\n\n\n","This is answer : ",param2,end="\n")                       #das
+    result = aspira(param2)  
 
     return jsonify({'result': result})
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    data = request.json
+    username = data.get("username")
+    password = data.get("password")
+
+    if users_collection.find_one({"username": username}):
+        return jsonify({"error": "User already exists"}), 400
+
+    hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
+    users_collection.insert_one({"username": username, "password": hashed_pw})
+
+    return jsonify({"message": "User created successfully"})
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get("username")
+    password = data.get("password")
+
+    user = users_collection.find_one({"username": username})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    if bcrypt.check_password_hash(user["password"], password):
+        return jsonify({"message": "Login successful"})
+    else:
+        return jsonify({"error": "Invalid credentials"}), 401
+
 
 if __name__ == '__main__':
     app.run(debug=False, port=5000)

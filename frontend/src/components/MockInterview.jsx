@@ -54,6 +54,7 @@ const MockInterview = () => {
   const [timeLeft, setTimeLeft] = useState(180);
   const [param_ans, setParam_ans] = useState("");
   const { state } = useLocation();
+  // console.log(state?.resume);
 
   // Authentication Check
   useEffect(() => {
@@ -88,8 +89,10 @@ const MockInterview = () => {
       setQuestionIndex(questionIndex + 1);
     } else {
       alert("Interview Completed! Redirecting to AI Interface...");
-      navigate("/interface", { state: param_ans });
-      console.log(param_ans)
+      // navigate("/interface", { state: param_ans });
+      navigate("/interface", { state: { answers: param_ans, resume: state?.resume } });
+      // console.log(param_ans)
+      // console.log(state)
     }
   };
 
