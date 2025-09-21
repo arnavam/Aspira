@@ -24,12 +24,12 @@ import { initializeApp } from "firebase/app";
 
 // Replace with your actual Firebase config
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyALXWOgThlxfwXPdLCHNBBfb4BaB6Wqt7A",
+  authDomain: "aspira1.firebaseapp.com",
+  projectId: "aspira1",
+  storageBucket: "aspira1.firebasestorage.app",
+  messagingSenderId: "114286394187",
+  appId: "1:114286394187:web:0c37d08e3b988cce04c6ce"
 };
 
 // Initialize Firebase
