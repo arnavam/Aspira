@@ -105,7 +105,7 @@ def aspira(answer="i would like to become an accountant"):
     else:
         logger.info("The dictionary is empty")
 
-    #Divide old values by 2 to reduce there relevancy
+    # Divide old values by 2 to reduce there relevancy
     if KW:
         KW = {key: (a/2,b/2) for key,(a,b) in KW.items()}
     else:
@@ -244,35 +244,6 @@ def run_function():
     result = aspira(param2)  
 
     return jsonify({'result': result})
-
-@app.route('/signup', methods=['POST'])
-def signup():
-    data = request.json
-    username = data.get("username")
-    password = data.get("password")
-
-    if users_collection.find_one({"username": username}):
-        return jsonify({"error": "User already exists"}), 400
-
-    hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
-    users_collection.insert_one({"username": username, "password": hashed_pw})
-
-    return jsonify({"message": "User created successfully"})
-
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.json
-    username = data.get("username")
-    password = data.get("password")
-
-    user = users_collection.find_one({"username": username})
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    if bcrypt.check_password_hash(user["password"], password):
-        return jsonify({"message": "Login successful"})
-    else:
-        return jsonify({"error": "Invalid credentials"}), 401
 
 
 if __name__ == '__main__':
