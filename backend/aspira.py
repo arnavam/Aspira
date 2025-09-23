@@ -107,7 +107,7 @@ def aspira(answer="i would like to become an accountant"):
 
     # Divide old values by 2 to reduce there relevancy
     if KW:
-        KW = {key: (a/2,b/2) for key,(a,b) in KW.items()}
+        KW = {key: [a/2,b/2] for key,(a,b) in KW.items()}
     else:
         KW={}
 
@@ -198,7 +198,13 @@ def aspira(answer="i would like to become an accountant"):
 
     # closest_key = min(q, key=lambda k: abs(q[k] - centre_value))
 
-    closest_key = heapq.nsmallest(3, q.items(), key=lambda item: abs(item[1])- centre_value)[2][0]# 
+    smallest = heapq.nsmallest(3, q.items(), key=lambda item: abs(item[1] - centre_value))
+    if len(smallest) >= 3:
+        closest_key = smallest[2][0]
+    else:
+        closest_key = smallest[-1][0]  # fallback to closest or second closest
+
+
     # def select_keys_by_value(d):
     #     mid_range = {k: v for k, v in d.items() if 0.2 <= v <= 0.8}
     #     low_range = {k: v for k, v in d.items() if v < 0.2}
@@ -225,7 +231,7 @@ def aspira(answer="i would like to become an accountant"):
 
     question=closest_key
     print(time.perf_counter()-start_time)
-    convert(question)
+    # convert(question)
     print(time.perf_counter()-start_time)
 
 
@@ -242,7 +248,7 @@ def run_function():
     
     print("This is resume : ",param1,"\n\n\n\n","This is answer : ",param2,end="\n")                       #das
     result = aspira(param2)  
-
+    print('done')
     return jsonify({'result': result})
 
 
