@@ -207,7 +207,7 @@ const Interface = () => {
 
   const handleNextQuestion = () => {
     // console.log("hai");
-    callquestion("", state.answers[0])
+    callquestion("", answer)
       .then(() => {
         setVideoname(`/result_voice.mp4?timestamp=${Date.now()}`); // Forces React to detect a change
         if (videoRef.current) {
@@ -226,11 +226,12 @@ const Interface = () => {
       .get(apiUrl,{params:{param1:resume,param2:answer}})
       .then((response) => {
         setVideoname("/result_voice.mp4");
-        console.log(response.data);
-        console.log(response.data.result);
-        console.log(response.data.result[0]);
+        // console.log(response.data);
+        // console.log(response.data.result);
+        // console.log(response.data.result[0]);
         setIsInterviewStarted(true);
         setQuestionget(response.data);
+        console.log(resume,"\n",answer)
       })
       .catch((error) => {
         console.error("Error fetching data:", error);
