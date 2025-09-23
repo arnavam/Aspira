@@ -13,7 +13,7 @@ import logging
 import time
 from flask import Flask, jsonify,request
 from flask_bcrypt import Bcrypt
-from db import users_collection
+# from db import users_collection
 
 from flask_cors import CORS
 
