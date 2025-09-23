@@ -46,7 +46,7 @@ mamba install conda-forge::librosa -y
 
 pip install git+https://github.com/elliottzheng/batch-face.git@master   
 pip install pyMuPDF                         
-pip install duckduckgo-search
+pip install duckduckgo-search==7.4.4
 
 mamba install keybert -y
 mamba install spacy -y

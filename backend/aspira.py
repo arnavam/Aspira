@@ -225,7 +225,7 @@ def aspira(answer="i would like to become an accountant"):
 
     question=closest_key
     print(time.perf_counter()-start_time)
-    # convert(question)
+    convert(question)
     print(time.perf_counter()-start_time)
 
 
@@ -250,5 +250,5 @@ if __name__ == '__main__':
     app.run(debug=False, port=5000)
     # app.run(host='0.0.0.0')
 
-# aspira()
+aspira()
 
