@@ -1,9 +1,8 @@
-from textblob import TextBlob
-import textstat
-import nltk
-nltk.download('punkt_tab')
+# import nltk
+# nltk.download('punkt_tab')
 
 def correcting2 (text):
+    from textblob import TextBlob
     words=[]
     for word in text.split():
         corrected = TextBlob(word).correct()
@@ -14,7 +13,7 @@ def correcting2 (text):
 
     
 def scoring(text):
-
+    from textblob import TextBlob
     blob = TextBlob(text)
     sentiment=blob.sentiment
     print("Sentiment Analysis:",sentiment ) # Sentiment (-1 to +1)
@@ -24,10 +23,12 @@ def scoring(text):
 
     print("Polarity:", polarity) 
     print("Subjectivity:",subjectivity ) 
-    return subjectivity, polarity
+    return subjectivity, polarity, list(blob.noun_phrases)
 
 
 def scoring2(text):
+    import textstat
+
     # flesch_kincaid_score = textstat.flesch_kincaid_grade(text)
     explainablity = textstat.flesch_reading_ease(text)
     technicality = textstat.gunning_fog(text)

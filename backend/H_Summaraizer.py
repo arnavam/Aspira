@@ -1,14 +1,32 @@
-from transformers import pipeline
-from textblob import TextBlob
-from sklearn.metrics.pairwise import cosine_similarity
-import spacy
-import networkx as nx
 import numpy as np
+import logging
+import os
+
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core import Document
+
+from logger_config import get_logger
+
+# Define logger for corpus debugging
+corpus_logger = get_logger("corpus_debug")
+corpus_logger.setLevel(logging.DEBUG)
+
+# File handler for corpus debug - if user wants a specific file
+# Ensuring the directory exists
+os.makedirs("log", exist_ok=True)
+c_handler = logging.FileHandler('log/corpus_debug.log', encoding='utf-8')
+c_handler.setLevel(logging.DEBUG)
+c_formatter = logging.Formatter('%(asctime)s - %(message)s')
+c_handler.setFormatter(c_formatter)
+
+if not corpus_logger.hasHandlers():
+    corpus_logger.addHandler(c_handler)
 
 
 
 
 def split_text_into_chunks(text, max_tokens=1024):
+    from textblob import TextBlob
 
     blob = TextBlob(text)
     sentences = [str(sentence).strip() for sentence in blob.sentences]
@@ -36,10 +54,27 @@ def split_text_into_chunks(text, max_tokens=1024):
     return chunks
 
 
+def retrieve_relevant_chunks(chunks: list, query: str, top_k: int = 5) -> list:
+    """Retrieve relevant chunks using Vector RAG."""
+    from L_llamaindex_rag import VectorRAGBuilder
+    
+    rag_builder = VectorRAGBuilder()
+    rag_builder.create_index(chunks)
+    
+    results = rag_builder.retrieve(query, top_k=top_k)
+    relevant = [item["chunk"] for item in results] if results else chunks
+    return relevant
 
-nlp = spacy.load("en_core_web_md")
 
-def textrank(text):
+
+def textrank(text, source_link=None):
+    import networkx as nx
+    from sklearn.metrics.pairwise import cosine_similarity
+    from model_cache import get_spacy
+    nlp = get_spacy()
+    if not text:
+        return {}
+    
     doc = nlp(text)
     sentences = list(doc.sents)
 
@@ -52,18 +87,22 @@ def textrank(text):
 
     ranked = sorted(((str(sent), scores[i]) for i, sent in enumerate(sentences)),key=lambda item: item[1],reverse=True)
     
-    top_sent = ranked[:int(len(ranked)*0.4)]
+    top_sent = dict(ranked[:int(len(ranked)*0.4)])
 
-#     print("🧠 Top Ranked Sentences (Semantic TextRank):\n")
-#     for i, (score, sent) in enumerate(ranked[:3]):
-#         print(f"{i+1}. {sent.strip()} (Score: {score:.4f})")
-
-    return dict(top_sent)
+    # Log to corpus debug logger
+    if source_link:
+        corpus_logger.debug(f"\n\n=== SOURCE: {source_link} ===")
+        for sentence in top_sent.keys():
+            corpus_logger.debug(f"{sentence}")
+        corpus_logger.debug("----------------------------------")
+    
+    return top_sent
 
 
 def summrize(text,max_tokens=200):
+    from model_cache import get_summarizer
 
-    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    summarizer = get_summarizer()
     # long_text = """
     # Artificial intelligence (AI) is intelligence demonstrated by machines, in contrast to the natural intelligence displayed by humans and animals. Leading AI textbooks define the field as the study of "intelligent agents": any device that perceives its environment and takes actions that maximize its chance of successfully achieving its goals. Colloquially, the term "artificial intelligence" is often used to describe machines (or computers) that mimic "cognitive" functions that humans associate with the human mind, such as "learning" and "problem solving." ...
     # """  # Make sure this text is long enough to exceed the token limit

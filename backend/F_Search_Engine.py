@@ -1,30 +1,25 @@
 import time
-from duckduckgo_search import DDGS
-from duckduckgo_search.exceptions import DuckDuckGoSearchException
-import logging
+from ddgs import DDGS
+from ddgs.exceptions import DDGSException
+from logger_config import get_logger
 
 
-logger = logging.getLogger(__name__)
-file_handler = logging.FileHandler('log/F_search_engine.log')
-if not logger.hasHandlers():
-    logger.addHandler(file_handler)
-
-logger.debug("This is a test log message")
+logger = get_logger(__name__)
 
 exclude_domains = ['reddit', 'coursera']
 include_domains = []
 exclude_title = ['course', 'tutorial']
 
 instance = DDGS()
-
-def search(search_query='Machine Learning', no=2,items=[]):
+    
+def ddg_search(search_query='Machine Learning', no=2,items=[]):
     a = []
     include_domains.extend(items)
 
     start_time = time.time()
     try:
         results = instance.text(
-            keywords=search_query,
+            search_query,
             safesearch='off',
             timelimit='w',
             max_results=no
@@ -34,7 +29,7 @@ def search(search_query='Machine Learning', no=2,items=[]):
             try:
                 name = search_query + ' ' + i
                 I = instance.text(
-                    keywords=name,
+                    name,
                     safesearch='off',
                     timelimit='w',
                     max_results=1
@@ -59,7 +54,7 @@ def search(search_query='Machine Learning', no=2,items=[]):
                 logger.info(f"Link: {item['href']}")
                 logger.info('-' * 50)  # Separator between results
                 a.append(item['href'])
-    except DuckDuckGoSearchException as e:
+    except DDGSException as e:
         logger.warning(f"Error: {e}")
         if "Ratelimit" in str(e):
             logger.warning("Rate limit exceeded. Breaking the search process.")
@@ -73,5 +68,106 @@ def search(search_query='Machine Learning', no=2,items=[]):
         # raise ValueError("No results found.")
 
     return a
+
+
+# =============================================================================
+# Alternative Search APIs
+# =============================================================================
+
+def brave_search(query: str, num_results: int = 5) -> list:
+    """Search using Brave Search API. Requires BRAVE_API_KEY in .env"""
+    import os
+    import requests
+    
+    api_key = os.environ.get("BRAVE_API_KEY")
+    if not api_key:
+        logger.warning("BRAVE_API_KEY not found, skipping Brave search")
+        return []
+    
+    headers = {
+        "Accept": "application/json",
+        "X-Subscription-Token": api_key
+    }
+    params = {
+        "q": query,
+        "count": num_results
+    }
+    
+    try:
+        response = requests.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            headers=headers,
+            params=params,
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        results = []
+        for result in data.get("web", {}).get("results", []):
+            results.append(result.get("url", ""))
+        
+        logger.info(f"Brave search returned {len(results)} results")
+        return results
+    except Exception as e:
+        logger.warning(f"Brave search error: {e}")
+        return []
+
+
+def tavily_search(query: str, num_results: int = 5) -> list:
+    """Search using Tavily API. Requires TAVILY_API_KEY in .env"""
+    import os
+    import requests
+    
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if not api_key:
+        logger.warning("TAVILY_API_KEY not found, skipping Tavily search")
+        return []
+    
+    try:
+        response = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": api_key,
+                "query": query,
+                "max_results": num_results,
+                "include_answer": False
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        results = [r.get("url", "") for r in data.get("results", [])]
+        logger.info(f"Tavily search returned {len(results)} results")
+        return results
+    except Exception as e:
+        logger.warning(f"Tavily search error: {e}")
+        return []
+
+
+def search(query: str, num_results: int = 3) -> list:
+    """
+    Unified search function with automatic fallback.
+    Tries: DuckDuckGo → Brave → Tavily
+    """
+    import time
+    
+    # Try DuckDuckGo first
+    links = ddg_search(query, no=num_results)
+    
+    if not links:
+        logger.info("DuckDuckGo failed, trying Brave Search...")
+        time.sleep(1)
+        links = brave_search(query, num_results=num_results)
+    
+    if not links:
+        logger.info("Brave Search failed, trying Tavily...")
+        time.sleep(1)
+        links = tavily_search(query, num_results=num_results)
+    
+    return links
+
+
 if __name__ == "__main__":
     search_results = search('Machine Learning', no=10)
