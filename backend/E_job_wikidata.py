@@ -1,8 +1,6 @@
 from D_keyword_generator import is_job
 from I_chatbot import similarity_score
 
-import wikipedia
-import wikipediaapi
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 import time
@@ -10,7 +8,7 @@ import heapq
 
 def get_wiki_links_fast(keyword):
     start_time=time.perf_counter()
-
+    import wikipediaapi
     wiki = wikipediaapi.Wikipedia(
         user_agent="MyApp/1.0 (adeadhumqn@gmail.com)",
         language='en'
@@ -27,6 +25,7 @@ def get_wiki_links_fast(keyword):
 
 
 def get_wiki_links(keyword):
+    import wikipedia
     try:    
         start_time=time.perf_counter()
         # Get Wikipedia page URL

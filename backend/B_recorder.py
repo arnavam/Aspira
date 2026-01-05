@@ -1,7 +1,8 @@
-import speech_recognition as sr
+
 import time
 
 def speech():
+    import speech_recognition as sr
     r = sr.Recognizer() 
     start_time = time.time()
 

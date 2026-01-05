@@ -1,10 +1,11 @@
-from gtts import gTTS
 import subprocess
 import os
-from pydub import AudioSegment
 import time
 import shutil
 def convert(text):
+    from pydub import AudioSegment
+
+    from gtts import gTTS
     start_time=time.time()
     mp3_path = "file/temp_audio.mp3"
     output_wav_path="Wav2Lip/filelists/test.wav"
