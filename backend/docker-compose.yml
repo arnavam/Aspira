@@ -1,0 +1,19 @@
+services:
+  aspira:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/__pycache__
+      - /app/lib
+      - model_cache:/root/.cache
+    command: uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - DOCKER_ENV=false
+
+volumes:
+  model_cache:
