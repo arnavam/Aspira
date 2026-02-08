@@ -1,17 +1,19 @@
 """
 Aspira - AI Interview Assistant
-Streamlit Frontend for the Aspira API
+Streamlit Frontend with Native Chat UI and Resume Upload
 """
 
 import streamlit as st
 import requests
 from typing import Optional
 
+
 # --- Configuration ---
-API_BASE_URL = st.sidebar.text_input(
-    "API URL", 
-    value="http://localhost:8000",
-    help="Base URL of the Aspira API server"
+st.set_page_config(
+    page_title="Aspira - AI Interview Assistant",
+    page_icon="✨",
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
 # --- Custom CSS for Modern Design ---
@@ -28,9 +30,9 @@ st.markdown("""
     /* Header Styling */
     .main-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
+        padding: 1.5rem 2rem;
         border-radius: 16px;
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
         box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
     }
     
@@ -38,45 +40,31 @@ st.markdown("""
         color: white;
         font-weight: 700;
         margin: 0;
-        font-size: 2.5rem;
+        font-size: 2rem;
     }
     
     .main-header p {
         color: rgba(255, 255, 255, 0.9);
-        margin: 0.5rem 0 0 0;
-        font-size: 1.1rem;
+        margin: 0.25rem 0 0 0;
+        font-size: 1rem;
     }
     
-    /* Chat Container */
-    .chat-container {
-        background: #f8fafc;
-        border-radius: 16px;
-        padding: 1.5rem;
+    /* Resume Card */
+    .resume-card {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border: 2px dashed #0ea5e9;
+        border-radius: 12px;
+        padding: 1rem;
         margin: 1rem 0;
-        border: 1px solid #e2e8f0;
+        text-align: center;
     }
     
-    /* Message Bubbles */
-    .user-message {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem 1.25rem;
-        border-radius: 18px 18px 4px 18px;
-        margin: 0.75rem 0;
-        max-width: 80%;
-        margin-left: auto;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
-    }
-    
-    .assistant-message {
-        background: white;
-        color: #1e293b;
-        padding: 1rem 1.25rem;
-        border-radius: 18px 18px 18px 4px;
-        margin: 0.75rem 0;
-        max-width: 80%;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    .resume-success {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 2px solid #22c55e;
+        border-radius: 12px;
+        padding: 1rem;
+        margin: 1rem 0;
     }
     
     /* Auth Card */
@@ -86,26 +74,6 @@ st.markdown("""
         padding: 2rem;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         border: 1px solid #e2e8f0;
-    }
-    
-    /* Status Indicators */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.375rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-    
-    .status-connected {
-        background: #d1fae5;
-        color: #065f46;
-    }
-    
-    .status-disconnected {
-        background: #fee2e2;
-        color: #991b1b;
     }
     
     /* Button Styling */
@@ -138,6 +106,17 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
     
+    /* Chat input styling */
+    .stChatInput > div {
+        border-radius: 24px !important;
+        border: 2px solid #e2e8f0 !important;
+    }
+    
+    .stChatInput > div:focus-within {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+    }
+    
     /* Sidebar Styling */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1e1e2e 0%, #2d2d44 100%);
@@ -150,6 +129,15 @@ st.markdown("""
     /* Hide Streamlit Branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    
+    /* Chat message avatars */
+    .stChatMessage [data-testid="chatAvatarIcon-user"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .stChatMessage [data-testid="chatAvatarIcon-assistant"] {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -159,15 +147,29 @@ if "access_token" not in st.session_state:
     st.session_state.access_token = None
 if "username" not in st.session_state:
     st.session_state.username = None
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "resume_content" not in st.session_state:
+    st.session_state.resume_content = None
+if "resume_uploaded" not in st.session_state:
+    st.session_state.resume_uploaded = False
+if "interview_started" not in st.session_state:
+    st.session_state.interview_started = False
+
+
+# --- API Configuration ---
+API_BASE_URL = st.sidebar.text_input(
+    "API URL", 
+    value="http://localhost:8000",
+    help="Base URL of the Aspira API server"
+)
 
 
 # --- API Helper Functions ---
 def check_api_health() -> bool:
     """Check if the API server is running."""
     try:
-        response = requests.post(f"{API_BASE_URL}/", timeout=5)
+        response = requests.get(f"{API_BASE_URL}/", timeout=5)
         return response.status_code == 200
     except requests.RequestException:
         return False
@@ -205,6 +207,30 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
             return True, data.get("access_token", "")
         else:
             error = response.json().get("detail", "Login failed")
+            return False, error
+    except requests.RequestException as e:
+        return False, str(e)
+
+
+def send_resume_to_backend(uploaded_file, token: str) -> tuple[bool, str]:
+    """Send resume file directly to the backend for parsing."""
+    try:
+        # Reset file pointer to beginning
+        uploaded_file.seek(0)
+        
+        # Send file as multipart form data
+        files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
+        response = requests.post(
+            f"{API_BASE_URL}/resume",
+            files=files,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60  # Longer timeout for file processing
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return True, data.get("message", "Resume processed successfully")
+        else:
+            error = response.json().get("detail", "Resume processing failed")
             return False, error
     except requests.RequestException as e:
         return False, str(e)
@@ -303,126 +329,148 @@ def render_auth_section():
                     st.warning("Please fill in all fields")
 
 
-def render_chat_interface():
-    """Render the chat interface."""
-    st.markdown(f"### 💬 Chat with Aspira")
-    st.markdown(f"*Logged in as: **{st.session_state.username}***")
+def render_resume_upload():
+    """Render the resume upload section."""
+    st.markdown("### 📄 Upload Your Resume")
+    st.markdown("*Upload your resume to personalize the interview experience*")
     
-    # Logout button
-    col1, col2 = st.columns([4, 1])
+    uploaded_file = st.file_uploader(
+        "Choose a file",
+        type=["docx", "pdf", "txt", "doc", "md", "html", "rtf"],
+        help="Supported formats: .docx, .pdf, .txt, .doc, .md, .html, .rtf",
+        key="resume_uploader"
+    )
+    
+    if uploaded_file is not None:
+        st.success(f"📎 File selected: **{uploaded_file.name}**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Submit Resume", use_container_width=True, type="primary"):
+                with st.spinner("Uploading and processing resume..."):
+                    success, message = send_resume_to_backend(
+                        uploaded_file, 
+                        st.session_state.access_token
+                    )
+                
+                if success:
+                    st.session_state.resume_content = True  # Just mark as uploaded
+                    st.session_state.resume_uploaded = True
+                    st.success(f"✅ {message}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {message}")
+        
+        with col2:
+            if st.button("⏭️ Skip Resume", use_container_width=True):
+                st.session_state.resume_uploaded = True
+                st.rerun()
+    else:
+        st.info("👆 Upload your resume to get personalized interview questions")
+        if st.button("⏭️ Skip and Start Interview", use_container_width=True):
+            st.session_state.resume_uploaded = True
+            st.rerun()
+
+
+def render_chat_interface():
+    """Render the native Streamlit chat interface."""
+    # Header with user info
+    col1, col2, col3 = st.columns([3, 1, 1])
+    with col1:
+        st.markdown(f"### 💬 Interview Session")
+        st.caption(f"Logged in as **{st.session_state.username}**")
     with col2:
+        if st.button("🗑️ Clear", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.interview_started = False
+            st.rerun()
+    with col3:
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.access_token = None
             st.session_state.username = None
-            st.session_state.chat_history = []
+            st.session_state.messages = []
+            st.session_state.resume_content = None
+            st.session_state.resume_uploaded = False
+            st.session_state.interview_started = False
             st.rerun()
     
     st.divider()
     
-    # Chat history display
-    chat_container = st.container()
-    with chat_container:
-        if not st.session_state.chat_history:
-            st.info("👋 Start a conversation by sending a message below!")
-        else:
-            for msg in st.session_state.chat_history:
-                if msg["role"] == "user":
-                    st.markdown(f"""
-                    <div class="user-message">
-                        <strong>You:</strong> {msg["content"]}
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                    <div class="assistant-message">
-                        <strong>Aspira:</strong> {msg["content"]}
-                    </div>
-                    """, unsafe_allow_html=True)
+    # Resume status indicator
+    if st.session_state.resume_content:
+        st.markdown("""
+        <div class="resume-success">
+            ✅ <strong>Resume loaded</strong> - Your resume has been analyzed for personalized questions
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Message input
-    st.divider()
-    with st.form("chat_form", clear_on_submit=True):
-        user_input = st.text_input(
-            "Message",
-            placeholder="Type your message here...",
-            label_visibility="collapsed"
-        )
-        col1, col2 = st.columns([4, 1])
-        with col2:
-            send_button = st.form_submit_button("Send ➤", use_container_width=True)
-    
-    if send_button and user_input:
-        # Add user message to history
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": user_input
-        })
-        
-        # Send to API
-        with st.spinner("Aspira is thinking..."):
-            success, response = send_chat_message(
-                user_input, 
-                st.session_state.access_token
-            )
-        
-        if success:
-            st.session_state.chat_history.append({
+    # Start interview if not started
+    if not st.session_state.interview_started and not st.session_state.messages:
+        st.info("👋 Ready to begin your interview? The AI interviewer will ask you questions based on your profile.")
+        if st.button("🎯 Start Interview", use_container_width=True, type="primary"):
+            st.session_state.interview_started = True
+            # Add initial greeting from assistant
+            st.session_state.messages.append({
                 "role": "assistant",
-                "content": response
+                "content": "Hello! Welcome to your interview session. I'm Aspira, your AI interviewer. I'll be asking you some questions to understand your background and skills better. Let's start - could you tell me a bit about yourself and what kind of role you're looking for?"
             })
-        else:
-            st.error(f"❌ Error: {response}")
-            # Check if token expired
-            if "credentials" in response.lower() or "401" in response:
-                st.warning("Session expired. Please login again.")
-                st.session_state.access_token = None
+            st.rerun()
+    
+    # Display chat messages using native st.chat_message
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"], avatar="🧑‍💼" if message["role"] == "user" else "✨"):
+            st.markdown(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Type your response here...", key="chat_input"):
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        st.rerun()
+        # Display user message immediately
+        with st.chat_message("user", avatar="🧑‍💼"):
+            st.markdown(prompt)
+        
+        # Get AI response
+        with st.chat_message("assistant", avatar="✨"):
+            with st.spinner("Thinking..."):
+                success, response = send_chat_message(
+                    prompt, 
+                    st.session_state.access_token
+                )
+            
+            if success:
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+            else:
+                error_msg = f"❌ Error: {response}"
+                st.error(error_msg)
+                # Check if token expired
+                if "credentials" in response.lower() or "401" in response:
+                    st.warning("Session expired. Please login again.")
+                    st.session_state.access_token = None
 
 
 def render_sidebar():
-    """Render the sidebar."""
-    st.sidebar.markdown("## ⚡ Aspira")
-    st.sidebar.markdown("---")
-    
+    """Render the sidebar - minimal, clean design."""
     # API Status
     st.sidebar.markdown("### 📡 API Status")
     api_connected = render_api_status()
     
-    st.sidebar.markdown("---")
-    
-    # User info if logged in
-    if st.session_state.access_token:
-        st.sidebar.markdown("### 👤 Account")
-        st.sidebar.markdown(f"**User:** {st.session_state.username}")
-        
+    # Interview stats (only show if in session)
+    if st.session_state.access_token and st.session_state.messages:
         st.sidebar.markdown("---")
+        user_msgs = len([m for m in st.session_state.messages if m["role"] == "user"])
+        st.sidebar.markdown("### 📊 Session Stats")
+        st.sidebar.metric("Responses", user_msgs)
         
-        # Clear chat button
-        if st.sidebar.button("🗑️ Clear Chat", use_container_width=True):
-            st.session_state.chat_history = []
-            st.rerun()
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("""
-    <div style="text-align: center; color: #888; font-size: 0.8rem;">
-        Built with ❤️ using Streamlit<br>
-        Powered by Aspira AI
-    </div>
-    """, unsafe_allow_html=True)
+        if st.session_state.resume_content:
+            st.sidebar.success("📄 Resume loaded")
     
     return api_connected
 
 
 # --- Main App ---
 def main():
-    st.set_page_config(
-        page_title="Aspira - AI Interview Assistant",
-        page_icon="✨",
-        layout="centered",
-        initial_sidebar_state="expanded"
-    )
-    
     # Render sidebar and get API status
     api_connected = render_sidebar()
     
@@ -440,11 +488,16 @@ def main():
         st.code(f"API URL: {API_BASE_URL}")
         return
     
-    # Main content based on auth state
-    if st.session_state.access_token:
-        render_chat_interface()
-    else:
+    # Main content based on state
+    if not st.session_state.access_token:
+        # Not logged in - show auth
         render_auth_section()
+    elif not st.session_state.resume_uploaded:
+        # Logged in but no resume - show upload
+        render_resume_upload()
+    else:
+        # Ready for interview - show chat
+        render_chat_interface()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 """
 Aspira Groq - Combined AI Interviewer with Groq LLM and LangGraph
 
-This module merges aspira.py and search-agent.py functionalities:
+This module merges aspira.py and search-agent.py functionalities:ent
+
+
 - Uses Groq LLM (llama-3.3-70b-versatile) for intelligent responses
 - Uses LangGraph for state machine workflow
 - Preserves sentence-transformers for similarity scoring
@@ -22,7 +24,7 @@ from C_ans_checker import scoring
 from D_keyword_generator import keyword_extraction
 from F_Search_Engine import search
 from G_Parser import Parse, scrape_webpage
-from I_chatbot import similarity_score
+from M_embeddings import similarity_score
 from K_llamaindex_graph import build_knowledge_graph_from_state
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph
