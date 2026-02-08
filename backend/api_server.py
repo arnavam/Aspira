@@ -1,10 +1,12 @@
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any
 import logging
+import tempfile
+import os
 
 from database import Database
 from auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY, jwt, JWTError
@@ -45,6 +47,12 @@ class Token(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
+class ResumeRequest(BaseModel):
+    content: str
+
+# Store resume content per user (in-memory)
+user_resumes: Dict[str, str] = {}
+
 from logger_config import get_logger
 
 # Logger
@@ -73,7 +81,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 # --- Auth Routes ---
 
-@app.post("/", response_model=Token)
+@app.get("/")
 async def check_health():
     return {"status": "ok"}
 
@@ -110,6 +118,49 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 # --- Chat Routes ---
 
+@app.post("/resume")
+async def upload_resume(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Upload and parse resume file using LlamaIndex.
+    Supports PDF, DOCX, TXT, MD, HTML, RTF formats.
+    """
+    try:
+        from llama_index.core import SimpleDirectoryReader
+        
+        # Save uploaded file to temp directory
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, file.filename)
+            
+            # Write uploaded file
+            content = await file.read()
+            with open(file_path, "wb") as f:
+                f.write(content)
+            
+            # Parse with LlamaIndex
+            reader = SimpleDirectoryReader(input_files=[file_path])
+            documents = reader.load_data()
+            
+            # Combine all document text
+            text = "\n".join([doc.text for doc in documents if doc.text])
+        
+        # Truncate if too long
+        max_length = 10000  # ~2500 tokens
+        text = text[:max_length] if len(text) > max_length else text
+        
+        # Store for this user
+        user_resumes[user_id] = text
+        
+        logger.info(f"Resume stored for user {user_id}: {len(text)} chars from {file.filename}")
+        return {"message": "Resume processed successfully", "chars": len(text), "filename": file.filename}
+        
+    except Exception as e:
+        logger.error(f"Error processing resume: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/chat")
 async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     """
@@ -122,11 +173,20 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     workflow = create_workflow()
     app_with_memory = workflow.compile(checkpointer=memory)
     
+    # Include resume context if available
+    history = []
+    if user_id in user_resumes:
+        resume_context = f"[RESUME CONTEXT]: {user_resumes[user_id]}"
+        history.append(resume_context)
+    
+    # Add user message to history
+    history.append(f"User: {request.message}")
+    
     # Build initial state
     state: AgentState = {
         # Persistent (managed by checkpointer)
         "keywords": {},
-        "history": [f"User: {request.message}"],  # Add user message to history
+        "history": history,
         "user_id": user_id,
         # Ephemeral (per-request)
         "question": "",
@@ -148,5 +208,4 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Error in chat processing: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 

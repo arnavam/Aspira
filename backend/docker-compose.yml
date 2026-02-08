@@ -14,6 +14,9 @@ services:
     environment:
       - LOG_LEVEL=INFO
       - DOCKER_ENV=false
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
 volumes:
   model_cache:
