@@ -11,8 +11,9 @@ include_domains = []
 exclude_title = ['course', 'tutorial']
 
 instance = DDGS()
-    
-def ddg_search(search_query='Machine Learning', no=2,items=[]):
+
+
+def ddg_search(search_query='Machine Learning', no=2, items=[]):
     a = []
     include_domains.extend(items)
 
@@ -24,7 +25,7 @@ def ddg_search(search_query='Machine Learning', no=2,items=[]):
             timelimit='w',
             max_results=no
         )
-        
+
         for i in include_domains:
             try:
                 name = search_query + ' ' + i
@@ -36,11 +37,11 @@ def ddg_search(search_query='Machine Learning', no=2,items=[]):
                 )
                 # Add results to the main results list (make sure it's a list of dictionaries)
                 if isinstance(I, list):
-                    results += I # `I` is a list of results
+                    results += I  # `I` is a list of results
 
             except Exception as e:
                 logger.warning(f"Error with domain {i}: {e}")
-        
+
         # Loop through the results and apply filters
         for idx, item in enumerate(results, 1):
             if isinstance(item, dict) and 'href' in item:
@@ -78,12 +79,12 @@ def brave_search(query: str, num_results: int = 5) -> list:
     """Search using Brave Search API. Requires BRAVE_API_KEY in .env"""
     import os
     import requests
-    
+
     api_key = os.environ.get("BRAVE_API_KEY")
     if not api_key:
         logger.warning("BRAVE_API_KEY not found, skipping Brave search")
         return []
-    
+
     headers = {
         "Accept": "application/json",
         "X-Subscription-Token": api_key
@@ -92,7 +93,7 @@ def brave_search(query: str, num_results: int = 5) -> list:
         "q": query,
         "count": num_results
     }
-    
+
     try:
         response = requests.get(
             "https://api.search.brave.com/res/v1/web/search",
@@ -102,11 +103,11 @@ def brave_search(query: str, num_results: int = 5) -> list:
         )
         response.raise_for_status()
         data = response.json()
-        
+
         results = []
         for result in data.get("web", {}).get("results", []):
             results.append(result.get("url", ""))
-        
+
         logger.info(f"Brave search returned {len(results)} results")
         return results
     except Exception as e:
@@ -118,12 +119,12 @@ def tavily_search(query: str, num_results: int = 5) -> list:
     """Search using Tavily API. Requires TAVILY_API_KEY in .env"""
     import os
     import requests
-    
+
     api_key = os.environ.get("TAVILY_API_KEY")
     if not api_key:
         logger.warning("TAVILY_API_KEY not found, skipping Tavily search")
         return []
-    
+
     try:
         response = requests.post(
             "https://api.tavily.com/search",
@@ -137,7 +138,7 @@ def tavily_search(query: str, num_results: int = 5) -> list:
         )
         response.raise_for_status()
         data = response.json()
-        
+
         results = [r.get("url", "") for r in data.get("results", [])]
         logger.info(f"Tavily search returned {len(results)} results")
         return results
@@ -152,20 +153,20 @@ def search(query: str, num_results: int = 3) -> list:
     Tries: DuckDuckGo → Brave → Tavily
     """
     import time
-    
+
     # Try DuckDuckGo first
     links = ddg_search(query, no=num_results)
-    
+
     if not links:
         logger.info("DuckDuckGo failed, trying Brave Search...")
         time.sleep(1)
         links = brave_search(query, num_results=num_results)
-    
+
     if not links:
         logger.info("Brave Search failed, trying Tavily...")
         time.sleep(1)
         links = tavily_search(query, num_results=num_results)
-    
+
     return links
 
 

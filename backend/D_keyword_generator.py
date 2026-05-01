@@ -5,36 +5,38 @@ from logger_config import get_logger
 logger = get_logger(__name__)
 
 
-
 with open("file/jobs.txt", "r") as file:
-    job_list = {line.strip().lower() for line in file if line.strip()}  # Store jobs in a set
+    job_list = {line.strip().lower()
+                for line in file if line.strip()}  # Store jobs in a set
 
 
 def is_job(text):
 
-
     text_lower = text.lower()
     word = 'chief ' + text_lower
-    return any( job ==text_lower or job ==word for job in job_list)  
+    return any(job == text_lower or job == word for job in job_list)
 
 
-
+# def keyword_extraction(text):
+#     from model_cache import get_keybert
+#     kw_model = get_keybert()
+#     start_time = time.perf_counter()
+#
+#     keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2))
+#     result = [(x, y / 10) for (x, y)
+#               in kw_model.extract_keywords(text, keyphrase_ngram_range=(2, 3))]
+#     keywords.extend(result)
+#
+#     # Deduplicate: remove longer keywords that contain shorter ones
+#     keywords = deduplicate_keywords(keywords)
+#
+#     logger.info(f"KeyGen-Time: {time.perf_counter() - start_time:.2f}s")
+#     return dict(keywords)
+#
 def keyword_extraction(text):
     from model_cache import get_keybert
-    kw_model = get_keybert()
-    start_time=time.perf_counter()
-
-
-
-    keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1,2))
-    result = [(x, y / 10) for (x, y) in kw_model.extract_keywords(text, keyphrase_ngram_range=(2,3))]
-    keywords.extend(result)
-    
-    # Deduplicate: remove longer keywords that contain shorter ones
-    keywords = deduplicate_keywords(keywords)
-
-    logger.info(f"KeyGen-Time: {time.perf_counter() - start_time:.2f}s")
-    return dict(keywords)
+    # Temporarily bypass KeyBERT
+    return extract(text)   # uses YAKE + spaCy
 
 
 def deduplicate_keywords(keywords: list) -> list:
@@ -46,7 +48,7 @@ def deduplicate_keywords(keywords: list) -> list:
     # Sort by length (shorter first)
     sorted_kw = sorted(keywords, key=lambda x: len(x[0]))
     result = []
-    
+
     for kw, score in sorted_kw:
         kw_lower = kw.lower()
         # Check if this keyword is contained in any already-kept keyword
@@ -57,27 +59,26 @@ def deduplicate_keywords(keywords: list) -> list:
             if kw_lower in existing_lower or existing_lower in kw_lower:
                 is_duplicate = True
                 break
-        
+
         if not is_duplicate:
             result.append((kw, score))
-    
-    return result
 
+    return result
 
 
 def extract_verbs_and_entities(text):
     from model_cache import get_spacy
     nlp = get_spacy()
-    
+
     doc = nlp(text)
-    
+
     unimportant_words = []
     for token in doc:
         if token.pos_ == "VERB":
             lemma = token.lemma_.lower()
             if lemma not in unimportant_words:
                 unimportant_words.append(lemma)
-    
+
     # entities = [(ent.text, ent.label_) for ent in doc.ents]
     unimportant_words.extend([ent.text for ent in doc.ents])
     return unimportant_words
@@ -95,14 +96,13 @@ def extract(text):
 
     import yake
     kw_extractor = yake.KeywordExtractor(lan="en", n=2)
-    kw_extractor2=yake.KeywordExtractor(lan="en", n=3)
+    kw_extractor2 = yake.KeywordExtractor(lan="en", n=3)
     keywords = kw_extractor.extract_keywords(text)
     keywords.extend(kw_extractor2.extract_keywords(text))
-    
-    for kw, score in keywords:
-        if  not any(kw.find(word)!=-1 for word in  []):
-            unique_keywords[kw] =unique_keywords.get(kw,0)*2 + score
 
+    for kw, score in keywords:
+        if not any(kw.find(word) != -1 for word in []):
+            unique_keywords[kw] = unique_keywords.get(kw, 0)*2 + score
 
     logger.info(f"keyword Gen-Time taken:{time.time() - start_time}")
     return unique_keywords
@@ -110,11 +110,11 @@ def extract(text):
 # Function to extract entities and verbs
 
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
     text = '''Machine learning teaches computers to recognize patterns and make decisions automatically using data and algorithms.
 It can be broadly categorized into three types: supervised learning , unsupervised learning and reinforcment learning'''
     # text ='i like to have accountant job'
-    logger.info(''.join(f"\n{k}:\t{v}" for k, v in keyword_extraction(text).items()))
+    logger.info(''.join(f"\n{k}:\t{v}" for k,
+                v in keyword_extraction(text).items()))
     print(extract_verbs_and_entities(text))
     logger.info(''.join(f"\n{k}:\t{v}" for k, v in extract(text).items()))

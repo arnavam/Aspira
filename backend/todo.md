@@ -1,3 +1,6 @@
+- use of pydantic AI instead of typeddict
+- use of instrcut llm
+- prompt versioning
 - use google search to get the job description
 - use google search for search
 - sys_msg ?

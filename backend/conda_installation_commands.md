@@ -72,6 +72,7 @@ conda env update --file environment.yml  --prune
 
 ""
 
-Start-Process -FilePath "C:\Users\ARAV\miniconda3\Uninstall-Miniconda3.exe" -ArgumentList "/S", "/RemoveCaches=1", "/RemoveConfigFiles=all", "/RemoveUserData=1" -Wait
+## Windows
+Start-Process -FilePath "C:\Users\username\miniconda3\Uninstall-Miniconda3.exe" -ArgumentList "/S", "/RemoveCaches=1", "/RemoveConfigFiles=all", "/RemoveUserData=1" -Wait
 
 

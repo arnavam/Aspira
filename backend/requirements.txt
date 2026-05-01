@@ -10,13 +10,15 @@ bcrypt==3.2.2
 
 # Database
 pymongo[srv]>=4.5.0
+pymongo-migrate
 
-# LangChain / LangGraph
-langchain>=1.0.0
-langchain-groq>=1.0.0
-langchain-community>=0.4.0
+# LangGraph (workflow only)
 langgraph>=1.0.0
 langgraph-checkpoint>=3.0.0
+
+# Pydantic AI
+pydantic-ai>=0.0.14
+pydantic-ai-slim[groq]>=0.0.14
 
 # NLP
 spacy>=3.7.0
@@ -41,3 +43,4 @@ ddgs>=1.0.0
 numpy>=1.24.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
+langfuse

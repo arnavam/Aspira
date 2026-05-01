@@ -155,6 +155,12 @@ if "resume_uploaded" not in st.session_state:
     st.session_state.resume_uploaded = False
 if "interview_started" not in st.session_state:
     st.session_state.interview_started = False
+if "conversation_id" not in st.session_state:
+    st.session_state.conversation_id = "default"
+if "current_view" not in st.session_state:
+    st.session_state.current_view = "Interview"
+if "conversations_list" not in st.session_state:
+    st.session_state.conversations_list = ["default"]
 
 
 # --- API Configuration ---
@@ -236,12 +242,12 @@ def send_resume_to_backend(uploaded_file, token: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def send_chat_message(message: str, token: str) -> tuple[bool, str]:
+def send_chat_message(message: str, token: str, conversation_id: str) -> tuple[bool, str]:
     """Send a chat message to the API."""
     try:
         response = requests.post(
             f"{API_BASE_URL}/chat",
-            json={"message": message},
+            json={"message": message, "conversation_id": conversation_id},
             headers={"Authorization": f"Bearer {token}"},
             timeout=60  # Longer timeout for AI processing
         )
@@ -253,6 +259,48 @@ def send_chat_message(message: str, token: str) -> tuple[bool, str]:
             return False, error
     except requests.RequestException as e:
         return False, str(e)
+
+def fetch_conversations(token: str) -> list:
+    """Fetch user's conversation IDs."""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/conversations",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json().get("conversations", ["default"])
+    except:
+        pass
+    return ["default"]
+
+def load_conversation_history(conversation_id: str, token: str) -> list:
+    """Fetch full history for a conversation."""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/conversations/{conversation_id}/history",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json().get("history", [])
+    except:
+        pass
+    return []
+
+def fetch_dashboard_data(conversation_id: str, token: str) -> dict:
+    """Fetch metrics and keyword scores for a conversation."""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/dashboard/{conversation_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+    except:
+        pass
+    return {"metrics": {}, "keywords": []}
 
 
 # --- UI Components ---
@@ -397,10 +445,10 @@ def render_chat_interface():
     st.divider()
     
     # Resume status indicator
-    if st.session_state.resume_content:
+    if not st.session_state.resume_content:
         st.markdown("""
         <div class="resume-success">
-            ✅ <strong>Resume loaded</strong> - Your resume has been analyzed for personalized questions
+            ❌<strong>Resume NOT loaded</strong> - Your resume has been analyzed for personalized questions
         </div>
         """, unsafe_allow_html=True)
     
@@ -435,7 +483,8 @@ def render_chat_interface():
             with st.spinner("Thinking..."):
                 success, response = send_chat_message(
                     prompt, 
-                    st.session_state.access_token
+                    st.session_state.access_token,
+                    st.session_state.conversation_id
                 )
             
             if success:
@@ -445,7 +494,7 @@ def render_chat_interface():
                 error_msg = f"❌ Error: {response}"
                 st.error(error_msg)
                 # Check if token expired
-                if "credentials" in response.lower() or "401" in response:
+                if "credentials" in str(response).lower() or "401" in str(response):
                     st.warning("Session expired. Please login again.")
                     st.session_state.access_token = None
 
@@ -456,8 +505,50 @@ def render_sidebar():
     st.sidebar.markdown("### 📡 API Status")
     api_connected = render_api_status()
     
+    if st.session_state.access_token:
+        st.sidebar.markdown("---")
+        
+        # Navigation
+        st.sidebar.markdown("### 🧭 Navigation")
+        view_selection = st.sidebar.radio("View", ["Interview", "Dashboard"])
+        if view_selection != st.session_state.current_view:
+            st.session_state.current_view = view_selection
+            st.rerun()
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 💬 Conversations")
+        
+        # Fetch conversations
+        st.session_state.conversations_list = fetch_conversations(st.session_state.access_token)
+        
+        # Ensure current active conversation is in the list even if it has no messages yet
+        if st.session_state.conversation_id not in st.session_state.conversations_list:
+            st.session_state.conversations_list.append(st.session_state.conversation_id)
+        
+        # Create New Conversation
+        new_conv = st.sidebar.text_input("New Conversation Name", placeholder="e.g. Google Interview")
+        if st.sidebar.button("➕ Create New"):
+            if new_conv and new_conv not in st.session_state.conversations_list:
+                st.session_state.conversation_id = new_conv
+                st.session_state.messages = []
+                st.session_state.interview_started = False
+                st.rerun()
+                
+        # Select Existing Conversation
+        selected_conv = st.sidebar.selectbox(
+            "Select Conversation", 
+            options=st.session_state.conversations_list,
+            index=st.session_state.conversations_list.index(st.session_state.conversation_id) if st.session_state.conversation_id in st.session_state.conversations_list else 0
+        )
+        
+        if selected_conv != st.session_state.conversation_id:
+            st.session_state.conversation_id = selected_conv
+            st.session_state.messages = load_conversation_history(selected_conv, st.session_state.access_token)
+            st.session_state.interview_started = len(st.session_state.messages) > 0
+            st.rerun()
+            
     # Interview stats (only show if in session)
-    if st.session_state.access_token and st.session_state.messages:
+    if st.session_state.access_token and st.session_state.messages and st.session_state.current_view == "Interview":
         st.sidebar.markdown("---")
         user_msgs = len([m for m in st.session_state.messages if m["role"] == "user"])
         st.sidebar.markdown("### 📊 Session Stats")
@@ -468,6 +559,43 @@ def render_sidebar():
     
     return api_connected
 
+
+def render_dashboard():
+    """Render the Dashboard for visualizing interview scores."""
+    st.markdown(f"### 📈 Dashboard: {st.session_state.conversation_id}")
+    st.caption("Review your performance and accumulated keyword scores from the interview.")
+    
+    with st.spinner("Loading dashboard..."):
+        data = fetch_dashboard_data(st.session_state.conversation_id, st.session_state.access_token)
+        
+    if not data:
+        st.warning("No data found for this conversation.")
+        return
+        
+    metrics = data.get("metrics", {})
+    keywords = data.get("keywords", [])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total Questions Asked", metrics.get("total_questions", 0))
+    with col2:
+        st.metric("Total User Responses", metrics.get("total_responses", 0))
+        
+    st.markdown("---")
+    st.markdown("#### 🏆 Keyword Performance Scores")
+    
+    if not keywords:
+        st.info("No keywords extracted yet. Start an interview to see your scores here!")
+    else:
+        import pandas as pd
+        
+        # Prepare DataFrame for chart
+        df = pd.DataFrame(keywords)
+        # Compute combined score for visualization
+        df["Combined Score"] = df["score"] * df["similarity"]
+        df_sorted = df.sort_values(by="Combined Score", ascending=False).head(10)
+        
+        st.bar_chart(data=df_sorted, x="keyword", y="score")
 
 # --- Main App ---
 def main():
@@ -496,8 +624,12 @@ def main():
         # Logged in but no resume - show upload
         render_resume_upload()
     else:
-        # Ready for interview - show chat
-        render_chat_interface()
+        # View Routing
+        if st.session_state.current_view == "Dashboard":
+            render_dashboard()
+        else:
+            # Ready for interview - show chat
+            render_chat_interface()
 
 
 if __name__ == "__main__":
