@@ -1,15 +1,37 @@
 """
 Aspira Groq - Combined AI Interviewer with Groq LLM and LangGraph
 
-This module merges aspira.py and search-agent.py functionalities:ent
+This module merges aspira.py and search-agent.py functionalities:
 
-
-- Uses Groq LLM (llama-3.3-70b-versatile) for intelligent responses
+- Uses Pydantic AI with Groq LLM (llama-3.1-8b-instant) for intelligent responses
 - Uses LangGraph for state machine workflow
 - Preserves sentence-transformers for similarity scoring
 - Hybrid query generation: keywords + message -> Groq -> search queries
 """
 
+from langgraph.checkpoint.memory import MemorySaver
+from logger_config import get_logger
+from pydantic_ai.models.groq import GroqModel
+from pydantic_ai import Agent
+from langgraph.graph import StateGraph
+from H_Summaraizer import textrank
+from K_llamaindex_graph import build_knowledge_graph_from_state
+from M_embeddings import similarity_score
+from G_Parser import Parse, scrape_webpage
+from F_Search_Engine import search
+from D_keyword_generator import keyword_extraction
+from C_ans_checker import scoring
+from prompts import (
+    QUERY_AGENT_SYSTEM_PROMPT,
+    QUESTION_AGENT_SYSTEM_PROMPT,
+    QUERY_GENERATION_PROMPT,
+    INTERVIEW_QUESTION_PROMPT,
+)
+from langfuse import Langfuse, observe
+
+langfuse = Langfuse()
+
+import numpy as np
 import heapq
 import os
 import time
@@ -19,23 +41,14 @@ from typing import List, TypedDict
 # Suppress tokenizers parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-import numpy as np
-from C_ans_checker import scoring
-from D_keyword_generator import keyword_extraction
-from F_Search_Engine import search
-from G_Parser import Parse, scrape_webpage
-from M_embeddings import similarity_score
-from K_llamaindex_graph import build_knowledge_graph_from_state
-from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph
 
 # Logging setup
-from logger_config import get_logger
 
 # Logging setup
 logger = get_logger(__name__)
 
-USE_KNOWLEDGE_GRAPH = os.environ.get("USE_KNOWLEDGE_GRAPH", "false").lower() == "true"
+USE_KNOWLEDGE_GRAPH = os.environ.get(
+    "USE_KNOWLEDGE_GRAPH", "false").lower() == "true"
 logger.debug(f"Knowledge graph enabled: {USE_KNOWLEDGE_GRAPH}")
 
 # Token counting helper
@@ -44,7 +57,8 @@ try:
     _tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4/Llama tokenizer
 except ImportError:
     _tokenizer = None
-    logger.warning("tiktoken not installed, falling back to char-based estimation")
+    logger.warning(
+        "tiktoken not installed, falling back to char-based estimation")
 
 
 def count_tokens(text: str) -> int:
@@ -58,7 +72,7 @@ def truncate_to_token_limit(items: List[str], max_tokens: int, separator: str = 
     """Truncate list of strings to fit within token limit, keeping most recent items."""
     result = []
     total_tokens = 0
-    
+
     # Process from newest to oldest (reverse order)
     for item in reversed(items):
         item_tokens = count_tokens(item + separator)
@@ -66,18 +80,37 @@ def truncate_to_token_limit(items: List[str], max_tokens: int, separator: str = 
             break
         result.append(item)
         total_tokens += item_tokens
-    
+
     # Reverse back to chronological order
     result.reverse()
     return separator.join(result)
 
 
-# Initialize Groq LLM
-llm = ChatGroq(
-    temperature=0,
-    model_name="llama-3.1-8b-instant",
-    groq_api_key=os.environ.get("GROQ_API_KEY"),
+# Initialize Pydantic AI with Groq
+groq_model = GroqModel(
+    "llama-3.1-8b-instant",
 )
+
+
+# Create agents for different tasks
+query_agent = Agent(
+    model=groq_model,
+    system_prompt=QUERY_AGENT_SYSTEM_PROMPT,
+)
+
+question_agent = Agent(
+    model=groq_model,
+    system_prompt=QUESTION_AGENT_SYSTEM_PROMPT,
+)
+def get_last_user_message(history: list) -> str:
+    """Extract the most recent user message, stripping the 'User: ' prefix."""
+    if not history:
+        return ""
+    last = history[-1]
+    if last.startswith("User: "):
+        return last[6:]           # len("User: ") == 6
+    return last                   # fallback if prefix missing
+
 
 
 start_time = time.perf_counter()
@@ -100,6 +133,34 @@ class AgentState(TypedDict):
     scraped_content: dict  # {url: text} - keys are the links
     relevant_chunks: List[str]  # Retrieved chunks from RAG
     question_scores: dict  # {question: similarity_score}
+    no_keywords: int
+    no_links: int
+    no_chunks: int
+# =============================================================================
+# LangGraph Workflow
+# =============================================================================
+
+
+def create_workflow():
+    """Create and compile the LangGraph workflow."""
+    workflow = StateGraph(AgentState)
+    workflow.add_node("handle_input", handle_input_node)
+    workflow.add_node("extract_keywords", extract_keywords_node) # as a bonus
+    workflow.add_node("query_generation", query_generation_node)
+    workflow.add_node("search_and_process", search_and_process_node)
+    workflow.add_node("generate_questions", generate_questions_node)
+    workflow.add_node("respond", respond_node)
+
+    workflow.add_edge("handle_input", "extract_keywords")
+    workflow.add_edge("extract_keywords", "query_generation")
+    workflow.add_edge("query_generation", "search_and_process")
+    workflow.add_edge("search_and_process", "generate_questions")
+    workflow.add_edge("generate_questions", "respond")
+
+    workflow.set_entry_point("handle_input")
+    workflow.set_finish_point("respond")
+
+    return workflow  # Return uncompiled - caller adds checkpointer
 
 
 # =============================================================================
@@ -109,7 +170,6 @@ class AgentState(TypedDict):
 
 def handle_input_node(state: AgentState) -> AgentState:
     """Process user input (simple pass-through now)."""
-    # Logic moved to extract_keywords_node to separate concerns
     history = state.get("history", [])
     if history:
         logger.info(f"Handling input: {history[-1][:50]}...")
@@ -122,16 +182,14 @@ def extract_keywords_node(state: AgentState) -> AgentState:
     if not isinstance(current_kw, dict):
         current_kw = {}
 
+    question = "which job would you prefer?"
     # Get answer from history
-    history = state.get("history", [])
-    answer = ""
-    if history:
-        last_msg = history[-1]
-        answer = (
-            last_msg.replace("User: ", "")
-            if last_msg.startswith("User: ")
-            else last_msg
-        )
+    answer = get_last_user_message(state.get("history", []))
+
+    # Ensure answer is a plain string to avoid passing non-text to KeyBERT
+    if not isinstance(answer, str):
+        logger.warning(f"extract_keywords_node: answer is {type(answer)}, coercing to str")
+        answer = str(answer)
 
     # Extract keywords using aspira's keyword extraction
     new_keywords = keyword_extraction(answer)
@@ -150,7 +208,6 @@ def extract_keywords_node(state: AgentState) -> AgentState:
             new_keywords[phrase_lower] = [0.1, 0.0]
     # ------------------------------------------
 
-    question = "which job would you prefer?"
 
     # Reduce relevancy of old keywords
     if current_kw:
@@ -164,7 +221,8 @@ def extract_keywords_node(state: AgentState) -> AgentState:
     if new_keywords:
         keys = list(new_keywords.keys())
         # Normalize scores to list
-        scores = [v[0] if isinstance(v, list) else v for v in new_keywords.values()]
+        scores = [v[0] if isinstance(
+            v, list) else v for v in new_keywords.values()]
 
         sims = similarity_score(question, keys)
 
@@ -201,53 +259,32 @@ def extract_keywords_node(state: AgentState) -> AgentState:
     return state
 
 
+@observe(as_type="generation")
 def query_generation_node(state: AgentState) -> AgentState:
     """Decide if search is needed and generate queries using Groq."""
     import json
 
     history = state.get("history", [])
-    answer = (
-        history[-1].replace("User: ", "")
-        if history and history[-1].startswith("User: ")
-        else (history[-1] if history else "")
-    )
+    answer = get_last_user_message(history)
     keywords = state.get("keywords", {})
-    
+
     # Format conversation history with token limit (1500 tokens max)
     history_str = truncate_to_token_limit(history, max_tokens=1500)
-    context = "\nCONVERSATION HISTORY\n" + history_str + "\n\n" if history_str else ""
+    context = "\nCONVERSATION HISTORY\n" + \
+        history_str + "\n\n" if history_str else ""
 
-    prompt = f"""Analyze this conversation and decide if web search is needed.
+    try:
+        langfuse_prompt = langfuse.get_prompt("query_generation_prompt")
+        prompt = langfuse_prompt.compile(context=context, answer=answer)
+    except Exception as e:
+        logger.warning(f"Failed to fetch query prompt from langfuse: {e}")
+        prompt = QUERY_GENERATION_PROMPT.format(
+            context=context,
+            answer=answer
+        )
 
-
-{context}
-
-
-LATEST MESSAGE: "{answer}"
-
-Respond with JSON only:
-{{"skip": true, "reason": "nonsense"}} - if latest message is nonsense/greeting/vague/short
-{{"skip": false, "queries": ["query1", "query2", "query3"]}} - if search needed
-
-Generate search queries that are relevant to the ENTIRE conversation context, not just the latest message.
-
-Examples:
-"hello" -> {{"skip": true, "reason": "nonsense"}}
-"I want to be a data scientist" -> {{"skip": false, "queries": ["data scientist interview questions", "data scientist skills", "data scientist career path"]}}
-
-Respond with valid JSON only, no other text:"""
-
-    response = llm.invoke(
-        [
-            {
-                "role": "system",
-                "content": "You are a JSON generator. Output only valid JSON, nothing else.",
-            },
-            {"role": "user", "content": prompt},
-        ]
-    )
-
-    content = response.content.strip()
+    result = query_agent.run_sync(prompt)
+    content = result.output.strip()
     logger.debug(f"Query generator response: {content}")
 
     # Skip if "nonsense" appears anywhere in LLM output
@@ -264,19 +301,17 @@ Respond with valid JSON only, no other text:"""
             reason = data.get("reason", "not needed")
             logger.info(f"Skipping search: {reason}")
         else:
-            search_queries = data.get("queries", [])[:3]
+            search_queries = data.get("queries", [])
             logger.info(f"Generated search queries: {search_queries}")
 
     except json.JSONDecodeError:
         # Fallback: try to extract queries from malformed response
         logger.warning(f"Failed to parse JSON, attempting fallback: {content}")
-        lines = [
+        search_queries = [
             l.strip().strip("\"'")
             for l in content.split("\n")
             if l.strip() and 5 < len(l.strip()) < 100
         ]
-        search_queries = lines[:3]
-
     state["search_queries"] = search_queries
     return state
 
@@ -284,14 +319,10 @@ Respond with valid JSON only, no other text:"""
 def search_and_process_node(state: AgentState) -> AgentState:
     """Parallel search+scrape with streaming, then LlamaIndex parallel ingestion."""
     search_queries = state.get("search_queries", [])
-    history = state.get("history", [])
-    answer = (
-        history[-1].replace("User: ", "")
-        if history and history[-1].startswith("User: ")
-        else (history[-1] if history else "")
-    )
-    question = "which job would you prefer?"
-
+    n = state.get("no_keywords",0)
+    m = state.get("no_links",0)
+    search_queries[:n]
+    answer = get_last_user_message(state.get("history", []))
     scraped_content = {}
     all_texts = []
 
@@ -313,7 +344,7 @@ def search_and_process_node(state: AgentState) -> AgentState:
             """Search, then IMMEDIATELY submit scrape tasks to shared pool."""
             time.sleep(delay)
             logger.info(f"Searching with query: {query}")
-            links = search(query, num_results=3)
+            links = search(query, num_results=m)
             if links:
                 logger.info(
                     f"Found {len(links)} links:\n"
@@ -342,14 +373,14 @@ def search_and_process_node(state: AgentState) -> AgentState:
                     all_texts.append(text)
                     logger.debug(f"Scraped {completed}/{total} pages")
 
-        logger.info(f"Search complete. Found {len(scraped_content)} valid links.")
+        logger.info(f'''Search complete. Found {
+                    len(scraped_content)} valid links.''')
     else:
         logger.info("No search queries - generating question from answer only")
 
     # Pre-filter with TextRank to reduce chunk count
     relevant_chunks = []
     if all_texts:
-        from H_Summaraizer import textrank
 
         logger.info(f"Applying TextRank to {len(all_texts)} texts...")
 
@@ -361,9 +392,11 @@ def search_and_process_node(state: AgentState) -> AgentState:
             return None
 
         with ThreadPoolExecutor(max_workers=4) as executor:
-            filtered_texts = [r for r in executor.map(process_text, all_texts) if r]
+            filtered_texts = [r for r in executor.map(
+                process_text, all_texts) if r]
 
-        logger.info(f"TextRank reduced to {len(filtered_texts)} filtered texts")
+        logger.info(f'''TextRank reduced to {
+                    len(filtered_texts)} filtered texts''')
 
         # Use TextRank filtered texts directly as context (skip RAG for speed)
         relevant_chunks = filtered_texts
@@ -385,14 +418,13 @@ def search_and_process_node(state: AgentState) -> AgentState:
     return state
 
 
+@observe(as_type="generation")
 def generate_questions_node(state: AgentState) -> AgentState:
     """Generate interview questions from retrieved chunks or user answer."""
     history = state.get("history", [])
-    answer = (
-        history[-1].replace("User: ", "")
-        if history and history[-1].startswith("User: ")
-        else (history[-1] if history else "")
-    )
+    i = state.get("no_chunks",0)
+    answer = get_last_user_message(history)
+
     relevant_chunks = state.get("relevant_chunks", [])
     question = "which job would you prefer?"  # default question
     history_section = ""
@@ -404,49 +436,45 @@ def generate_questions_node(state: AgentState) -> AgentState:
         # Use token limit (2000 tokens) instead of fixed turn count
         history_formatted = truncate_to_token_limit(history, max_tokens=2000)
         if history_formatted:
-            history_section = f"PREVIOUS CONVERSATION HISTORY:\n\n{history_formatted}\n\n"
+            history_section = f'''PREVIOUS CONVERSATION HISTORY:\n\n{
+                history_formatted}\n\n'''
 
     # Use chunks if available, with token limit (3000 tokens)
     if relevant_chunks:
-        context_text = truncate_to_token_limit(relevant_chunks[:5], max_tokens=3000)
+        context_text = truncate_to_token_limit(
+            relevant_chunks[:i], max_tokens=3000)
         if context_text:
             context_section = (
-                f"CONTEXT INFORMATION (from knowledge base):\n\n{context_text}\n\n"
+                f'''CONTEXT INFORMATION (from knowledge base):\n\n{
+                    context_text}\n\n'''
             )
 
-    prompt = f"""You are an AI interviewer conducting a professional interview.
-    
-{history_section}
-{context_section}
+    try:
+        langfuse_prompt = langfuse.get_prompt("interview_question_prompt")
+        prompt = langfuse_prompt.compile(history_section=history_section, context_section=context_section)
+    except Exception as e:
+        logger.warning(f"Failed to fetch interview prompt from langfuse: {e}")
+        prompt = INTERVIEW_QUESTION_PROMPT.format(
+            history_section=history_section,
+            context_section=context_section
+        )
 
-Based on the conversation, generate 3 relevant follow-up interview questions.
-- Do NOT number the questions
-- Do NOT use bullet points or asterisks
-- Do NOT use markdown formatting (no ** or *)
-- Just write plain questions, one per line"""
-
-    response = llm.invoke(
-        [
-            {
-                "role": "system",
-                "content": "You are an AI interviewer. Generate plain questions without numbering or formatting.",
-            },
-            {"role": "user", "content": prompt},
-        ]
-    )
+    result = question_agent.run_sync(prompt)
+    response_content = result.output
 
     # Parse and clean questions - remove numbering, bullets, markdown
     import re
 
     raw_questions = [
         q.strip()
-        for q in response.content.strip().split("\n")
+        for q in response_content.strip().split("\n")
         if q.strip() and "?" in q
     ]
     questions = []
     for q in raw_questions:
         # Remove leading numbers, bullets, asterisks, markdown
-        clean = re.sub(r"^[\d\.\)\-\*\s]+", "", q)  # Remove "1." "1)" "-" "*" etc
+        # Remove "1." "1)" "-" "*" etc
+        clean = re.sub(r"^[\d\.\)\-\*\s]+", "", q)
         clean = re.sub(r"\*\*([^*]+)\*\*:?", r"\1:", clean)  # Remove **bold**
         clean = re.sub(r"\*([^*]+)\*", r"\1", clean)  # Remove *italic*
         clean = clean.strip().strip('"').strip()
@@ -462,7 +490,8 @@ Based on the conversation, generate 3 relevant follow-up interview questions.
             graph_result = build_knowledge_graph_from_state(
                 state, relevant_chunks, questions
             )
-            logger.info(f"Knowledge graph updated: {graph_result.get('stats', {})}")
+            logger.info(f'''Knowledge graph updated: {
+                        graph_result.get('stats', {})}''')
         except Exception as e:
             logger.warning(f"Knowledge graph building failed: {e}")
 
@@ -496,9 +525,8 @@ def respond_node(state: AgentState) -> AgentState:
         closest_key = smallest[-1][0]
     logger.info(
         f"Generated {len(q)} questions:\n"
-        + "\n".join(f"  {q.get(question, 0):.2f}: {question}" for question in q.keys())
+        + "\n".join(f"  {q.get(question, 0)                    :.2f}: {question}" for question in q.keys())
     )
-
 
     logger.info(f"Selected Question : {closest_key}")
 
@@ -507,42 +535,12 @@ def respond_node(state: AgentState) -> AgentState:
     return state
 
 
-# =============================================================================
-# LangGraph Workflow
-# =============================================================================
 
-
-def create_workflow():
-    """Create and compile the LangGraph workflow."""
-    workflow = StateGraph(AgentState)
-    workflow.add_node("handle_input", handle_input_node)
-    workflow.add_node("extract_keywords", extract_keywords_node)
-    workflow.add_node("query_generation", query_generation_node)
-    workflow.add_node("search_and_process", search_and_process_node)
-    workflow.add_node("generate_questions", generate_questions_node)
-    workflow.add_node("respond", respond_node)
-
-    workflow.add_edge("handle_input", "extract_keywords")
-    workflow.add_edge("extract_keywords", "query_generation")
-    workflow.add_edge("query_generation", "search_and_process")
-    workflow.add_edge("search_and_process", "generate_questions")
-    workflow.add_edge("generate_questions", "respond")
-
-    workflow.set_entry_point("handle_input")
-    workflow.set_finish_point("respond")
-
-    return workflow  # Return uncompiled - caller adds checkpointer
-
-
-# Create the workflow
-aspira_workflow = create_workflow()
 
 
 # =============================================================================
 # Terminal Conversation (LangGraph Persistence)
 # =============================================================================
-
-from langgraph.checkpoint.memory import MemorySaver
 
 
 def terminal_conversation():
@@ -552,7 +550,7 @@ def terminal_conversation():
     print("=" * 60)
     print("Type 'quit' or 'exit' to end the conversation.")
     print("=" * 60 + "\n")
-
+    aspira_workflow = None
     # Initialize Checkpointer
     memory = MemorySaver()
     app = aspira_workflow.compile(checkpointer=memory)
@@ -581,7 +579,8 @@ def terminal_conversation():
 
         # Determine last question from history or fallback
         # (Usually the last message in history is the AI's question if we finished a turn)
-        last_msg = last_history[-1] if last_history else f"Interviewer: {question}"
+        last_msg = last_history[-1] if last_history else f'''Interviewer: {
+            question}'''
         if last_msg.startswith("Interviewer: "):
             print(f"\n🎤 {last_msg}\n")
         else:
