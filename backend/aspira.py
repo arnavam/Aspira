@@ -9,10 +9,15 @@ This module merges aspira.py and search-agent.py functionalities:
 - Hybrid query generation: keywords + message -> Groq -> search queries
 """
 
+from langgraph.graph import END
+from dotenv import load_dotenv
+from typing import List, TypedDict
+import asyncio
+import os
+import heapq
+import numpy as np
 from langgraph.checkpoint.memory import MemorySaver
 from logger_config import get_logger
-from pydantic_ai.models.groq import GroqModel
-from pydantic_ai import Agent
 from langgraph.graph import StateGraph
 from H_Summaraizer import textrank
 from K_llamaindex_graph import build_knowledge_graph_from_state
@@ -27,22 +32,14 @@ from prompts import (
     QUERY_GENERATION_PROMPT,
     INTERVIEW_QUESTION_PROMPT,
 )
+from agent_factory import create_agent, extract_agent_data
 from langfuse import Langfuse, observe
 
 langfuse = Langfuse()
 
-import numpy as np
-import heapq
-import os
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, TypedDict
-
+load_dotenv()
 # Suppress tokenizers parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-
-# Logging setup
 
 # Logging setup
 logger = get_logger(__name__)
@@ -86,22 +83,6 @@ def truncate_to_token_limit(items: List[str], max_tokens: int, separator: str = 
     return separator.join(result)
 
 
-# Initialize Pydantic AI with Groq
-groq_model = GroqModel(
-    "llama-3.1-8b-instant",
-)
-
-
-# Create agents for different tasks
-query_agent = Agent(
-    model=groq_model,
-    system_prompt=QUERY_AGENT_SYSTEM_PROMPT,
-)
-
-question_agent = Agent(
-    model=groq_model,
-    system_prompt=QUESTION_AGENT_SYSTEM_PROMPT,
-)
 def get_last_user_message(history: list) -> str:
     """Extract the most recent user message, stripping the 'User: ' prefix."""
     if not history:
@@ -110,10 +91,6 @@ def get_last_user_message(history: list) -> str:
     if last.startswith("User: "):
         return last[6:]           # len("User: ") == 6
     return last                   # fallback if prefix missing
-
-
-
-start_time = time.perf_counter()
 
 
 # =============================================================================
@@ -136,16 +113,26 @@ class AgentState(TypedDict):
     no_keywords: int
     no_links: int
     no_chunks: int
+    answer_stats: dict  # Statistical baseline metrics
+    is_interview_complete: bool  # End interview flag
+    interview_metadata: dict  # Company, role, requirements
+
 # =============================================================================
 # LangGraph Workflow
 # =============================================================================
+
+
+def should_continue(state: AgentState):
+    if state.get("is_interview_complete"):
+        return END
+    return "search_and_process"
 
 
 def create_workflow():
     """Create and compile the LangGraph workflow."""
     workflow = StateGraph(AgentState)
     workflow.add_node("handle_input", handle_input_node)
-    workflow.add_node("extract_keywords", extract_keywords_node) # as a bonus
+    workflow.add_node("extract_keywords", extract_keywords_node)  # as a bonus
     workflow.add_node("query_generation", query_generation_node)
     workflow.add_node("search_and_process", search_and_process_node)
     workflow.add_node("generate_questions", generate_questions_node)
@@ -153,7 +140,7 @@ def create_workflow():
 
     workflow.add_edge("handle_input", "extract_keywords")
     workflow.add_edge("extract_keywords", "query_generation")
-    workflow.add_edge("query_generation", "search_and_process")
+    workflow.add_conditional_edges("query_generation", should_continue)
     workflow.add_edge("search_and_process", "generate_questions")
     workflow.add_edge("generate_questions", "respond")
 
@@ -168,7 +155,7 @@ def create_workflow():
 # =============================================================================
 
 
-def handle_input_node(state: AgentState) -> AgentState:
+async def handle_input_node(state: AgentState) -> AgentState:
     """Process user input (simple pass-through now)."""
     history = state.get("history", [])
     if history:
@@ -176,7 +163,7 @@ def handle_input_node(state: AgentState) -> AgentState:
     return state
 
 
-def extract_keywords_node(state: AgentState) -> AgentState:
+async def extract_keywords_node(state: AgentState) -> AgentState:
     """Enhance keywords with similarity scoring. Pure function - no DB calls."""
     current_kw = state.get("keywords", {})
     if not isinstance(current_kw, dict):
@@ -188,18 +175,29 @@ def extract_keywords_node(state: AgentState) -> AgentState:
 
     # Ensure answer is a plain string to avoid passing non-text to KeyBERT
     if not isinstance(answer, str):
-        logger.warning(f"extract_keywords_node: answer is {type(answer)}, coercing to str")
+        logger.warning(f'''extract_keywords_node: answer is {
+                       type(answer)}, coercing to str''')
         answer = str(answer)
 
-    # Extract keywords using aspira's keyword extraction
-    new_keywords = keyword_extraction(answer)
+    # Extract keywords using aspira's keyword extraction (CPU bound)
+    new_keywords = await asyncio.to_thread(keyword_extraction, answer)
 
-    # Adding scoring to get noun_phrases
+    # Adding scoring to get noun_phrases (CPU bound)
     try:
-        subj, pol, noun_phrases = scoring(answer)
+        subj, pol, noun_phrases = await asyncio.to_thread(scoring, answer)
+        from C_ans_checker import scoring2
+        explainablity, technicality, depth = await asyncio.to_thread(scoring2, answer)
+        state["answer_stats"] = {
+            "subjectivity": float(subj),
+            "polarity": float(pol),
+            "readability": float(explainablity),
+            "technicality": float(technicality),
+            "depth": float(depth)
+        }
     except Exception as e:
         logger.warning(f"Scoring extraction failed: {e}")
         noun_phrases = []
+        state["answer_stats"] = {}
 
     # Add noun phrases to new_keywords
     for phrase in noun_phrases:
@@ -208,11 +206,10 @@ def extract_keywords_node(state: AgentState) -> AgentState:
             new_keywords[phrase_lower] = [0.1, 0.0]
     # ------------------------------------------
 
-
     # Reduce relevancy of old keywords
     if current_kw:
         current_kw = {
-            key: [a / 2, b / 2]
+            key: [float(a) / 2, float(b) / 2]
             for key, (a, b) in current_kw.items()
             if isinstance((a, b), (list, tuple)) and len((a, b)) == 2
         }
@@ -224,15 +221,15 @@ def extract_keywords_node(state: AgentState) -> AgentState:
         scores = [v[0] if isinstance(
             v, list) else v for v in new_keywords.values()]
 
-        sims = similarity_score(question, keys)
+        sims = await asyncio.to_thread(similarity_score, question, keys)
 
         for key, score in zip(keys, scores):
-            sm = sims.get(key, 0)
+            sm = float(sims.get(key, 0))
             if key in current_kw:
-                current_kw[key][0] += score
+                current_kw[key][0] += float(score)
                 current_kw[key][1] += sm
             else:
-                current_kw[key] = [score, sm]
+                current_kw[key] = [float(score), sm]
 
     # Sort by combined score
     sorted_scores = dict(
@@ -260,31 +257,40 @@ def extract_keywords_node(state: AgentState) -> AgentState:
 
 
 @observe(as_type="generation")
-def query_generation_node(state: AgentState) -> AgentState:
+async def query_generation_node(state: AgentState) -> AgentState:
     """Decide if search is needed and generate queries using Groq."""
     import json
 
     history = state.get("history", [])
     answer = get_last_user_message(history)
     keywords = state.get("keywords", {})
+    metadata = state.get("interview_metadata", {})
 
     # Format conversation history with token limit (1500 tokens max)
     history_str = truncate_to_token_limit(history, max_tokens=1500)
     context = "\nCONVERSATION HISTORY\n" + \
         history_str + "\n\n" if history_str else ""
 
+    metadata_section = ""
+    if metadata.get("company") or metadata.get("role"):
+        metadata_section = f"COMPANY: {metadata.get('company', 'Not specified')}\nROLE: {metadata.get(
+            'role', 'Not specified')}\nREQUIREMENTS: {metadata.get('requirements', 'Not specified')}"
+
     try:
         langfuse_prompt = langfuse.get_prompt("query_generation_prompt")
-        prompt = langfuse_prompt.compile(context=context, answer=answer)
+        prompt = langfuse_prompt.compile(
+            context=context, answer=answer, metadata_section=metadata_section)
     except Exception as e:
         logger.warning(f"Failed to fetch query prompt from langfuse: {e}")
         prompt = QUERY_GENERATION_PROMPT.format(
             context=context,
-            answer=answer
+            answer=answer,
+            metadata_section=metadata_section
         )
 
-    result = query_agent.run_sync(prompt)
-    content = result.output.strip()
+    query_agent = create_agent(QUERY_AGENT_SYSTEM_PROMPT)
+    result = await query_agent.run(prompt)
+    content = extract_agent_data(result).strip()
     logger.debug(f"Query generator response: {content}")
 
     # Skip if "nonsense" appears anywhere in LLM output
@@ -312,106 +318,103 @@ def query_generation_node(state: AgentState) -> AgentState:
             for l in content.split("\n")
             if l.strip() and 5 < len(l.strip()) < 100
         ]
+
+    state["is_interview_complete"] = data.get(
+        "is_interview_complete", False) if isinstance(data, dict) else False
+    if state["is_interview_complete"]:
+        logger.info("AI determined interview is complete based on criteria.")
+
     state["search_queries"] = search_queries
     return state
 
 
-def search_and_process_node(state: AgentState) -> AgentState:
-    """Parallel search+scrape with streaming, then LlamaIndex parallel ingestion."""
+async def search_and_process_node(state: AgentState) -> AgentState:
+    """Parallel search+scrape with async queue data pool, then LlamaIndex parallel ingestion."""
     search_queries = state.get("search_queries", [])
-    n = state.get("no_keywords",0)
-    m = state.get("no_links",0)
-    search_queries[:n]
+    n = state.get("no_keywords", 0)
+    m = state.get("no_links", 0)
+
+    if search_queries and n > 0:
+        search_queries = search_queries[:n]
+
     answer = get_last_user_message(state.get("history", []))
     scraped_content = {}
     all_texts = []
 
     # Perform search + scrape if queries exist
     if search_queries:
-        scrape_futures = []
+        url_queue = asyncio.Queue()
 
-        def scrape_link(link):
-            """Scrape a single link."""
-            text = scrape_webpage(link)
-            if not text:
-                logger.debug(f"Parse failed for {link}, trying Parse...")
-                text = Parse(link)
-            if text:
-                scraped_content[link] = text
-            return text
-
-        def search_and_submit(query, delay, executor):
-            """Search, then IMMEDIATELY submit scrape tasks to shared pool."""
-            time.sleep(delay)
+        async def producer(query, delay):
+            await asyncio.sleep(delay)
             logger.info(f"Searching with query: {query}")
-            links = search(query, num_results=m)
+            links = await search(query, num_results=m if m > 0 else 3)
             if links:
                 logger.info(
                     f"Found {len(links)} links:\n"
                     + "\n".join(f"  - {link}" for link in links)
                 )
-            for link in links:
-                scrape_futures.append(executor.submit(scrape_link, link))
+                for link in links:
+                    await url_queue.put(link)
 
-        # SHARED POOL: scrape starts as soon as ANY link arrives
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            search_futs = [
-                executor.submit(search_and_submit, q, i * 1.5, executor)
-                for i, q in enumerate(search_queries)
-            ]
-            for f in search_futs:
-                f.result()
+        async def consumer():
+            while True:
+                link = await url_queue.get()
+                try:
+                    text = await scrape_webpage(link)
+                    if not text:
+                        logger.debug(f"Parse failed for {
+                                     link}, trying Parse...")
+                        text = await Parse(link)
+                    if text:
+                        scraped_content[link] = text
+                        all_texts.append(text)
+                finally:
+                    url_queue.task_done()
 
-            # Log scraping progress
-            completed = 0
-            total = len(scrape_futures)
-            logger.info(f"Scraping {total} pages...")
-            for f in as_completed(scrape_futures):
-                text = f.result()
-                completed += 1
-                if text:
-                    all_texts.append(text)
-                    logger.debug(f"Scraped {completed}/{total} pages")
+        # Start producers
+        producers = [asyncio.create_task(
+            producer(q, i * 1.5)) for i, q in enumerate(search_queries)]
 
-        logger.info(f'''Search complete. Found {
-                    len(scraped_content)} valid links.''')
+        # Start consumers (data pool workers)
+        consumers = [asyncio.create_task(consumer()) for _ in range(8)]
+
+        # Wait for all producers to finish adding URLs
+        await asyncio.gather(*producers)
+
+        # Wait for all consumers to process the queue
+        await url_queue.join()
+
+        # Cancel consumers
+        for c in consumers:
+            c.cancel()
+
+        logger.info(f"Search complete. Found {
+                    len(scraped_content)} valid links.")
     else:
         logger.info("No search queries - generating question from answer only")
 
     # Pre-filter with TextRank to reduce chunk count
     relevant_chunks = []
     if all_texts:
-
         logger.info(f"Applying TextRank to {len(all_texts)} texts...")
 
-        # Extract top sentences from each text using TextRank (PARALLEL)
-        def process_text(text):
-            top_sentences = textrank(text)
+        # Extract top sentences from each text using TextRank (PARALLEL via to_thread)
+        async def process_text(text):
+            top_sentences = await asyncio.to_thread(textrank, text)
             if top_sentences:
                 return " ".join(top_sentences.keys())
             return None
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            filtered_texts = [r for r in executor.map(
-                process_text, all_texts) if r]
+        filtered_texts = await asyncio.gather(*(process_text(t) for t in all_texts))
+        filtered_texts = [r for r in filtered_texts if r]
 
-        logger.info(f'''TextRank reduced to {
-                    len(filtered_texts)} filtered texts''')
+        logger.info(f"TextRank reduced to {
+                    len(filtered_texts)} filtered texts")
 
         # Use TextRank filtered texts directly as context (skip RAG for speed)
         relevant_chunks = filtered_texts
         logger.info(f"Using {len(relevant_chunks)} filtered texts as context")
-
-        # # RAG on the filtered texts (commented out for speed)
-        # if filtered_texts:
-        #     from L_llamaindex_rag import VectorRAGBuilder
-        #     logger.info(f"Starting RAG indexing for {len(filtered_texts)} filtered texts...")
-        #     rag = VectorRAGBuilder()
-        #     rag.create_index_parallel(filtered_texts, num_workers=4)
-        #     logger.info("Indexing complete, retrieving chunks...")
-        #     results = rag.retrieve(answer, top_k=5)
-        #     relevant_chunks = [r["chunk"] for r in results] if results else []
-        #     logger.info(f"Retrieved {len(relevant_chunks)} chunks for question generation")
 
     state["scraped_content"] = scraped_content
     state["relevant_chunks"] = relevant_chunks
@@ -419,48 +422,56 @@ def search_and_process_node(state: AgentState) -> AgentState:
 
 
 @observe(as_type="generation")
-def generate_questions_node(state: AgentState) -> AgentState:
+async def generate_questions_node(state: AgentState) -> AgentState:
     """Generate interview questions from retrieved chunks or user answer."""
     history = state.get("history", [])
-    i = state.get("no_chunks",0)
+    i = state.get("no_chunks", 0)
     answer = get_last_user_message(history)
 
     relevant_chunks = state.get("relevant_chunks", [])
     question = "which job would you prefer?"  # default question
     history_section = ""
     context_section = ""
+    metadata = state.get("interview_metadata", {})
+
+    metadata_section = ""
+    if metadata.get("company") or metadata.get("role"):
+        metadata_section = f"COMPANY: {metadata.get('company', 'Not specified')}\nROLE: {metadata.get(
+            'role', 'Not specified')}\nREQUIREMENTS: {metadata.get('requirements', 'Not specified')}"
 
     # Include Conversation History
-
     if history:
         # Use token limit (2000 tokens) instead of fixed turn count
         history_formatted = truncate_to_token_limit(history, max_tokens=2000)
         if history_formatted:
-            history_section = f'''PREVIOUS CONVERSATION HISTORY:\n\n{
-                history_formatted}\n\n'''
+            history_section = f"PREVIOUS CONVERSATION HISTORY:\n\n{
+                history_formatted}\n\n"
 
     # Use chunks if available, with token limit (3000 tokens)
     if relevant_chunks:
         context_text = truncate_to_token_limit(
-            relevant_chunks[:i], max_tokens=3000)
+            relevant_chunks[:i] if i > 0 else relevant_chunks, max_tokens=3000)
         if context_text:
             context_section = (
-                f'''CONTEXT INFORMATION (from knowledge base):\n\n{
-                    context_text}\n\n'''
+                f"CONTEXT INFORMATION (from knowledge base):\n\n{
+                    context_text}\n\n"
             )
 
     try:
         langfuse_prompt = langfuse.get_prompt("interview_question_prompt")
-        prompt = langfuse_prompt.compile(history_section=history_section, context_section=context_section)
+        prompt = langfuse_prompt.compile(
+            history_section=history_section, context_section=context_section, metadata_section=metadata_section)
     except Exception as e:
         logger.warning(f"Failed to fetch interview prompt from langfuse: {e}")
         prompt = INTERVIEW_QUESTION_PROMPT.format(
             history_section=history_section,
-            context_section=context_section
+            context_section=context_section,
+            metadata_section=metadata_section
         )
 
-    result = question_agent.run_sync(prompt)
-    response_content = result.output
+    question_agent = create_agent(QUESTION_AGENT_SYSTEM_PROMPT)
+    result = await question_agent.run(prompt)
+    response_content = extract_agent_data(result)
 
     # Parse and clean questions - remove numbering, bullets, markdown
     import re
@@ -473,7 +484,6 @@ def generate_questions_node(state: AgentState) -> AgentState:
     questions = []
     for q in raw_questions:
         # Remove leading numbers, bullets, asterisks, markdown
-        # Remove "1." "1)" "-" "*" etc
         clean = re.sub(r"^[\d\.\)\-\*\s]+", "", q)
         clean = re.sub(r"\*\*([^*]+)\*\*:?", r"\1:", clean)  # Remove **bold**
         clean = re.sub(r"\*([^*]+)\*", r"\1", clean)  # Remove *italic*
@@ -482,23 +492,22 @@ def generate_questions_node(state: AgentState) -> AgentState:
             questions.append(clean)
 
     state["question_scores"] = (
-        similarity_score(question, questions) if questions else {}
+        await asyncio.to_thread(similarity_score, question, questions) if questions else {}
     )
+
     # Optional: Build knowledge graph from this turn's data
     if USE_KNOWLEDGE_GRAPH and relevant_chunks:
         try:
-            graph_result = build_knowledge_graph_from_state(
-                state, relevant_chunks, questions
-            )
-            logger.info(f'''Knowledge graph updated: {
-                        graph_result.get('stats', {})}''')
+            graph_result = await asyncio.to_thread(build_knowledge_graph_from_state, state, relevant_chunks, questions)
+            logger.info(f"Knowledge graph updated: {
+                        graph_result.get('stats', {})}")
         except Exception as e:
             logger.warning(f"Knowledge graph building failed: {e}")
 
     return state
 
 
-def respond_node(state: AgentState) -> AgentState:
+async def respond_node(state: AgentState) -> AgentState:
     """Select and return the best question."""
 
     user_id = state["user_id"]
@@ -534,23 +543,20 @@ def respond_node(state: AgentState) -> AgentState:
 
     return state
 
-
-
-
-
 # =============================================================================
 # Terminal Conversation (LangGraph Persistence)
 # =============================================================================
 
 
-def terminal_conversation():
+async def terminal_conversation():
     """Interactive terminal conversation using LangGraph MemorySaver."""
     print("\n" + "=" * 60)
     print("ASPIRA GROQ - AI Interviewer (Terminal + MemorySaver)")
     print("=" * 60)
     print("Type 'quit' or 'exit' to end the conversation.")
     print("=" * 60 + "\n")
-    aspira_workflow = None
+
+    aspira_workflow = create_workflow()
     # Initialize Checkpointer
     memory = MemorySaver()
     app = aspira_workflow.compile(checkpointer=memory)
@@ -578,9 +584,8 @@ def terminal_conversation():
         last_history = current_values.get("history", [])
 
         # Determine last question from history or fallback
-        # (Usually the last message in history is the AI's question if we finished a turn)
-        last_msg = last_history[-1] if last_history else f'''Interviewer: {
-            question}'''
+        last_msg = last_history[-1] if last_history else f"Interviewer: {
+            question}"
         if last_msg.startswith("Interviewer: "):
             print(f"\n🎤 {last_msg}\n")
         else:
@@ -599,21 +604,19 @@ def terminal_conversation():
 
         # Reset timer to only count processing time
         from logger_config import reset_timer
-
         reset_timer()
 
-        # Append user input to history (Manual append for TypedDict state)
+        # Append user input to history
         updated_history = last_history + [f"User: {user_input}"]
 
         inputs = {
             "history": updated_history,
             "user_id": "terminal_user",
-            # Other fields can be omitted, they will be preserved or regenerated
             "keywords": current_values.get("keywords", {}),
         }
 
         # Run Workflow
-        result = app.invoke(inputs, config)
+        result = await app.ainvoke(inputs, config)
 
         ai_question = result.get("question", "What else?")
 
@@ -623,11 +626,4 @@ def terminal_conversation():
 
 
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1 and sys.argv[1] == "--terminal":
-        terminal_conversation()
-    else:
-        # app.run(debug=False, port=5000)
-        print("Use 'uvicorn api_server:app' to run the API server.")
-        terminal_conversation()
+    asyncio.run(terminal_conversation())
