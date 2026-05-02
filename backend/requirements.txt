@@ -1,46 +1,48 @@
 # Core
-fastapi>=0.100.0
-uvicorn>=0.23.0
-python-multipart>=0.0.6
+fastapi
+uvicorn
+python-multipart
 
 # Auth
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
-bcrypt==3.2.2
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
 
 # Database
-pymongo[srv]>=4.5.0
+pymongo
 pymongo-migrate
 
 # LangGraph (workflow only)
-langgraph>=1.0.0
-langgraph-checkpoint>=3.0.0
+langgraph
+langgraph-checkpoint
 
 # Pydantic AI
-pydantic-ai>=0.0.14
-pydantic-ai-slim[groq]>=0.0.14
+pydantic-ai
+pydantic-ai-slim[groq]
 
 # NLP
-spacy>=3.7.0
-textblob>=0.17.1
-nltk>=3.8.0
-textstat>=0.7.0
-yake>=0.4.8
-keybert>=0.8.0
-sentence-transformers>=2.2.0
+spacy
+textblob
+nltk
+textstat
+yake
+keybert
+sentence-transformers
 
 # LlamaIndex
-llama-index-core>=0.14.0
-llama-cpp-python>=0.2.90
+llama-index-core
+llama-cpp-python
 
 # Web Scraping
-beautifulsoup4>=4.12.0
-requests>=2.31.0
-trafilatura>=1.6.0
-ddgs>=1.0.0
+beautifulsoup4
+requests
+trafilatura
+ddgs
 
 # Utilities
-numpy>=1.24.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
+numpy
+pydantic
+python-dotenv
 langfuse
+httpx
+sse-starlette

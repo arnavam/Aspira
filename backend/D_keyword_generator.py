@@ -5,16 +5,6 @@ from logger_config import get_logger
 logger = get_logger(__name__)
 
 
-with open("file/jobs.txt", "r") as file:
-    job_list = {line.strip().lower()
-                for line in file if line.strip()}  # Store jobs in a set
-
-
-def is_job(text):
-
-    text_lower = text.lower()
-    word = 'chief ' + text_lower
-    return any(job == text_lower or job == word for job in job_list)
 
 
 # def keyword_extraction(text):

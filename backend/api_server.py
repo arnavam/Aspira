@@ -1,23 +1,28 @@
-
 from logger_config import get_logger
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from typing import Dict, Any
 import logging
 import tempfile
 import os
+import json
+import asyncio
 
 from database import Database
 from auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY, jwt, JWTError
 
-# Initialize Database (only for auth now)
+# Initialize Database
 db = Database()
-
 
 # Initialize API
 app = FastAPI(title="Aspira Groq API")
+
+@app.on_event("startup")
+async def startup_db_client():
+    await db.initialize()
 
 # CORS
 app.add_middleware(
@@ -33,21 +38,24 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Pydantic Models
 
-
 class UserCreate(BaseModel):
     username: str
     password: str
-
 
 class Token(BaseModel):
     access_token: str
     token_type: str
 
-
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str = "default"
+    force_end: bool = False
 
+class SetupRequest(BaseModel):
+    conversation_id: str = "default"
+    company: str = ""
+    role: str = ""
+    requirements: str = ""
 
 class ResumeRequest(BaseModel):
     content: str
@@ -61,7 +69,6 @@ user_resumes: Dict[str, str] = {}
 logger = get_logger(__name__)
 
 # --- Dependencies ---
-
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
@@ -77,14 +84,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise credentials_exception
 
-    user = db.get_user(username)
+    user = await db.get_user(username)
     if user is None:
         raise credentials_exception
 
     return str(user["_id"])
 
 # --- Auth Routes ---
-
 
 @app.get("/")
 async def check_health():
@@ -93,7 +99,7 @@ async def check_health():
 
 @app.post("/register", response_model=Token)
 async def register(user: UserCreate):
-    existing_user = db.get_user(user.username)
+    existing_user = await db.get_user(user.username)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -101,7 +107,7 @@ async def register(user: UserCreate):
         )
 
     hashed_password = get_password_hash(user.password)
-    user_id = db.create_user(user.username, hashed_password)
+    user_id = await db.create_user(user.username, hashed_password)
 
     if not user_id:
         raise HTTPException(
@@ -113,7 +119,7 @@ async def register(user: UserCreate):
 
 @app.post("/token", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = db.get_user(form_data.username)
+    user = await db.get_user(form_data.username)
     if not user or not verify_password(form_data.password, user["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -128,7 +134,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @app.get("/conversations")
 async def get_conversations(user_id: str = Depends(get_current_user)):
     """Get a list of all conversation IDs for the user."""
-    conversations = db.get_conversations(user_id)
+    conversations = await db.get_conversations(user_id)
     valid_conversations = [c for c in conversations if c]
     if not valid_conversations:
         return {"conversations": ["default"]}
@@ -138,7 +144,7 @@ async def get_conversations(user_id: str = Depends(get_current_user)):
 @app.get("/conversations/{conversation_id}/history")
 async def get_history(conversation_id: str, user_id: str = Depends(get_current_user)):
     """Get the full history of a specific conversation."""
-    history = db.get_conversation_history(user_id, conversation_id)
+    history = await db.get_conversation_history(user_id, conversation_id)
     # Parse history into roles for frontend
     parsed_history = []
     for msg in history:
@@ -153,10 +159,21 @@ async def get_history(conversation_id: str, user_id: str = Depends(get_current_u
     return {"history": parsed_history}
 
 
+@app.post("/setup_interview")
+async def setup_interview(request: SetupRequest, user_id: str = Depends(get_current_user)):
+    """Save metadata for a new interview session."""
+    metadata = {
+        "company": request.company,
+        "role": request.role,
+        "requirements": request.requirements
+    }
+    await db.save_interview_metadata(user_id, request.conversation_id, metadata)
+    return {"message": "Interview metadata saved successfully."}
+
 @app.get("/dashboard/{conversation_id}")
 async def get_dashboard_data(conversation_id: str, user_id: str = Depends(get_current_user)):
-    """Fetch analytics and keyword scores for a specific conversation dashboard."""
-    keywords = db.get_keywords(user_id, conversation_id)
+    """Fetch analytics, keyword scores, and evaluation for a specific conversation dashboard."""
+    keywords = await db.get_keywords(user_id, conversation_id)
     # keywords is a dict {keyword: [score, similarity]}
 
     # Format for easy frontend consumption
@@ -166,15 +183,19 @@ async def get_dashboard_data(conversation_id: str, user_id: str = Depends(get_cu
         key=lambda x: x["score"] * x["similarity"], reverse=True)
 
     # Grab history to count messages
-    history = db.get_conversation_history(user_id, conversation_id)
+    history = await db.get_conversation_history(user_id, conversation_id)
     user_messages = [msg for msg in history if msg.startswith("User: ")]
+    
+    # Grab evaluation
+    evaluation = await db.get_evaluation(user_id, conversation_id)
 
     return {
         "metrics": {
             "total_questions": len([msg for msg in history if msg.startswith("Interviewer: ")]),
             "total_responses": len(user_messages),
         },
-        "keywords": formatted_keywords
+        "keywords": formatted_keywords,
+        "evaluation": evaluation
     }
 
 
@@ -200,8 +221,11 @@ async def upload_resume(
                 f.write(content)
 
             # Parse with LlamaIndex
-            reader = SimpleDirectoryReader(input_files=[file_path])
-            documents = reader.load_data()
+            def load_docs():
+                reader = SimpleDirectoryReader(input_files=[file_path])
+                return reader.load_data()
+            
+            documents = await asyncio.to_thread(load_docs)
 
             # Combine all document text
             text = "\n".join([doc.text for doc in documents if doc.text])
@@ -211,10 +235,9 @@ async def upload_resume(
         text = text[:max_length] if len(text) > max_length else text
 
         # Store for this user in DB
-        db.save_resume(user_id, text)
+        await db.save_resume(user_id, text)
 
-        logger.info(f"""Resume stored for user {user_id}: {
-                    len(text)} chars from {file.filename}""")
+        logger.info(f"Resume stored for user {user_id}: {len(text)} chars from {file.filename}")
         return {"message": "Resume processed successfully", "chars": len(text), "filename": file.filename}
 
     except Exception as e:
@@ -223,68 +246,96 @@ async def upload_resume(
 
 
 @app.post("/chat")
-def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
+async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     """
     Main chat endpoint. Session state is stored in MongoDB.
+    Returns Server-Sent Events (SSE) representing LangGraph node updates and final output.
     """
     from aspira import create_workflow, AgentState
 
     conversation_id = request.conversation_id
 
     # Load history from DB
-    history = db.get_conversation_history(user_id, conversation_id)
+    history = await db.get_conversation_history(user_id, conversation_id)
 
     # Load resume from DB
-    resume = db.get_resume(user_id)
+    resume = await db.get_resume(user_id)
     if resume and not any("[RESUME CONTEXT]" in msg for msg in history):
         history.insert(0, f"[RESUME CONTEXT]: {resume}")
 
     # Save and append the new user message
-    db.add_conversation_message(
-        user_id, f"User: {request.message}", conversation_id)
-    history.append(f"User: {request.message}")
+    if request.message.strip():
+        await db.add_conversation_message(
+            user_id, f"User: {request.message}", conversation_id)
+        history.append(f"User: {request.message}")
 
-    # Load keywords from DB
-    keywords = db.get_keywords(user_id, conversation_id)
+    # Load keywords and metadata from DB
+    keywords = await db.get_keywords(user_id, conversation_id)
+    metadata = await db.get_interview_metadata(user_id, conversation_id)
 
-    # Create workflow
-    workflow = create_workflow()
-    app_without_memory = workflow.compile()
+    async def event_generator():
+        try:
+            if request.force_end:
+                from I_evaluation import evaluate_interview
+                eval_data = await evaluate_interview(history, {}, metadata)
+                await db.save_evaluation(user_id, conversation_id, eval_data)
+                yield {"event": "evaluation", "data": json.dumps(eval_data)}
+                yield {"event": "end", "data": "Stream finished"}
+                return
 
-    # Build initial state
-    state: AgentState = {
-        "keywords": keywords,
-        "history": history,
-        "user_id": user_id,
-        "question": "",
-        "search_queries": [],
-        "scraped_content": {},
-        "relevant_chunks": [],
-        "question_scores": {},
-            "no_keywords": 1,
-    "no_links": 1,
-    "no_chunks": 1
+            # Create workflow
+            workflow = create_workflow()
+            app_without_memory = workflow.compile()
 
-    }
+            # Build initial state
+            state: AgentState = {
+                "keywords": keywords,
+                "history": history,
+                "user_id": user_id,
+                "question": "",
+                "search_queries": [],
+                "scraped_content": {},
+                "relevant_chunks": [],
+                "question_scores": {},
+                "no_keywords": 1,
+                "no_links": 1,
+                "no_chunks": 1,
+                "answer_stats": {},
+                "is_interview_complete": False,
+                "interview_metadata": metadata
+            }
 
-    try:
-        # Run workflow
-        result = app_without_memory.invoke(state)
+            # Stream events as nodes complete
+            async for event in app_without_memory.astream(state, stream_mode="updates"):
+                for node_name, state_update in event.items():
+                    # Send an update event
+                    yield {"event": "update", "data": json.dumps({"node": node_name, "status": "completed"})}
+                    
+                    if node_name == "respond":
+                        response_question = state_update.get("question")
+                        
+                        # Save interviewer response to DB
+                        await db.add_conversation_message(
+                            user_id, f"Interviewer: {response_question}", conversation_id)
+                
+                        # Save updated keywords
+                        new_keywords = state_update.get("keywords", {})
+                        if new_keywords:
+                            await db.update_keywords(user_id, new_keywords, conversation_id)
+                            
+                        # Send final question
+                        yield {"event": "question", "data": json.dumps({"response": response_question})}
+                    
+                    # AI-driven termination handling
+                    if node_name == "query_generation" and state_update.get("is_interview_complete"):
+                        from I_evaluation import evaluate_interview
+                        eval_data = await evaluate_interview(history, state_update.get("answer_stats", {}), metadata)
+                        await db.save_evaluation(user_id, conversation_id, eval_data)
+                        yield {"event": "evaluation", "data": json.dumps(eval_data)}
+                        
+            yield {"event": "end", "data": "Stream finished"}
+        except Exception as e:
+            logger.error(f"Error in chat processing: {e}", exc_info=True)
+            yield {"event": "error", "data": str(e)}
 
-        # Get response question
-        response_question = result.get("question")
-
-        # Save interviewer response to DB
-        db.add_conversation_message(user_id, f'''Interviewer: {
-                                    response_question}''', conversation_id)
-
-        # Save updated keywords
-        new_keywords = result.get("keywords", {})
-        if new_keywords:
-            db.update_keywords(user_id, new_keywords, conversation_id)
-
-        return {"response": response_question}
-
-    except Exception as e:
-        logger.error(f"Error in chat processing: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    return EventSourceResponse(event_generator())
