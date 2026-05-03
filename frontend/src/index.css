@@ -194,8 +194,40 @@ label {
 
 .recording-pulse {
   animation: pulse-ring 2s infinite;
-  background-color: var(--success);
+  background-color: var(--danger);
   color: white;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.typing-dot {
+  width: 4px;
+  height: 4px;
+  background-color: var(--accent-primary);
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+  animation: dot-pulse 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes rotate-status {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.status-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(112, 92, 255, 0.2);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: rotate-status 1s linear infinite;
 }
 
 /* Scrollbar */

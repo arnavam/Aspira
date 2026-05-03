@@ -21,6 +21,7 @@ export default function Interview() {
   const [loading, setLoading] = useState(false);
   const [ttsEngine, setTtsEngine] = useState<'edge' | 'browser'>('edge');
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('Initializing...');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -117,7 +118,19 @@ export default function Interview() {
     }
 
     try {
-      const response = await api.chat("", currentConv);
+      const handleStatus = (node: string) => {
+        const mapping: Record<string, string> = {
+          'handle_input': 'Analyzing your input...',
+          'extract_keywords': 'Identifying key skills...',
+          'query_generation': 'Structuring interview flow...',
+          'search_and_process': 'Searching technical context...',
+          'generate_questions': 'Crafting follow-up questions...',
+          'respond': 'Almost there...'
+        };
+        setStatusMessage(mapping[node] || 'Aspira is thinking...');
+      };
+
+      const response = await api.chat("", currentConv, false, handleStatus);
       const aiText = response.response;
       setMessages(prev => [...prev, { role: 'assistant', content: aiText }]);
       playTTS(aiText);
@@ -163,12 +176,25 @@ export default function Interview() {
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setLoading(true);
-
+    
     try {
-      const response = await api.chat(text, currentConv);
+      const handleStatus = (node: string) => {
+        const mapping: Record<string, string> = {
+          'handle_input': 'Analyzing your answer...',
+          'extract_keywords': 'Extracting core concepts...',
+          'query_generation': 'Evaluating progress...',
+          'search_and_process': 'Consulting knowledge base...',
+          'generate_questions': 'Drafting next question...',
+          'respond': 'Finalizing response...'
+        };
+        setStatusMessage(mapping[node] || 'Thinking...');
+      };
+
+      const response = await api.chat(text, currentConv, false, handleStatus);
       const aiText = response.response;
       setMessages(prev => [...prev, { role: 'assistant', content: aiText }]);
       playTTS(aiText);
+      setStatusMessage('Initializing...');
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error connecting to server. Please try again.' }]);
@@ -440,15 +466,36 @@ export default function Interview() {
               <img src="/interviewer.png" alt="AI Interviewer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
 
-            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '80px', justifyContent: 'center' }}>
               {loading ? (
-                <p style={{ color: 'var(--accent-primary)', fontSize: '0.9rem' }}>Aspira is analyzing...</p>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', animation: 'fadeIn 0.3s ease' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div className="status-spinner" />
+                    <span style={{ color: 'var(--accent-primary)', fontSize: '0.95rem', fontWeight: 500, letterSpacing: '0.02em' }}>
+                      {statusMessage}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <div className="typing-dot" />
+                    <div className="typing-dot" />
+                    <div className="typing-dot" />
+                  </div>
+                </div>
               ) : isRecording ? (
-                <p style={{ color: 'var(--success)', fontSize: '0.9rem' }}>Listening...</p>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                  <p style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)', display: 'inline-block', boxShadow: '0 0 10px var(--danger)' }} />
+                    Listening...
+                  </p>
+                </div>
               ) : (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Awaiting your response...</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', opacity: 0.8 }}>Awaiting your response...</p>
               )}
-              <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.1em', marginTop: '12px' }}>TAKE YOUR TIME. SPEAK CLEARLY.</p>
+              {!loading && !isRecording && (
+                <p style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.15em', textTransform: 'uppercase', marginTop: '4px' }}>
+                  READY FOR YOUR INPUT
+                </p>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '100px', padding: '8px', border: '1px solid var(--glass-border)', alignItems: 'center' }}>

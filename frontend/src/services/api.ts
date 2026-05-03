@@ -92,7 +92,12 @@ export const api = {
   },
 
   // Chat
-  chat: async (message: string, conversation_id: string, force_end: boolean = false) => {
+  chat: async (
+    message: string, 
+    conversation_id: string, 
+    force_end: boolean = false,
+    onStatusUpdate?: (status: string) => void
+  ) => {
     const res = await fetch(`${API_URL}/chat`, {
       method: "POST",
       headers: headers(),
@@ -123,6 +128,8 @@ export const api = {
               const data = JSON.parse(dataStr);
               if (currentEvent === 'question' && data.response) {
                 finalResponse = data.response;
+              } else if (currentEvent === 'update' && data.node && onStatusUpdate) {
+                onStatusUpdate(data.node);
               }
             } catch (e) {
               console.error("Failed to parse SSE data", e);
