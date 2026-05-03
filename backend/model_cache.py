@@ -25,6 +25,12 @@ _KEYBERT_MODEL = None
 _SUMMARIZER = None
 
 
+def initialize_all_models():
+    """Eagerly load all NLP models into memory."""
+    get_spacy()
+    get_keybert()
+
+
 def get_keybert():
     """
     Lazy-load KeyBERT model once, reuse forever.

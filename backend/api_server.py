@@ -15,7 +15,11 @@ from typing import Dict
 from database import Database
 from auth import (verify_password, get_password_hash, create_access_token,
                   ALGORITHM, SECRET_KEY, jwt, JWTError)
+from M_embeddings import initialize_models
+from model_cache import initialize_all_models
 
+
+from aspira import create_workflow, AgentState
 # Initialize Database
 db = Database()
 
@@ -26,6 +30,9 @@ app = FastAPI(title="Aspira Backend API")
 @app.on_event("startup")
 async def startup_db_client():
     await db.initialize()
+    # Eagerly load AI/NLP models for faster first response
+    initialize_models()
+    initialize_all_models()
 
 # CORS
 app.add_middleware(
@@ -168,12 +175,12 @@ async def get_history(conversation_id: str, user_id: str = Depends(get_current_u
             parsed_history.append({"role": "assistant", "content": msg})
     evaluation = await db.get_evaluation(user_id, conversation_id)
     metadata = await db.get_interview_metadata(user_id, conversation_id)
-    
+
     # Strictly consider it ended ONLY if there's a final overall_score or grades.
     is_ended = bool(evaluation and "overall_score" in evaluation)
-    
+
     return {
-        "history": parsed_history, 
+        "history": parsed_history,
         "is_ended": is_ended,
         "metadata": metadata
     }
@@ -196,27 +203,28 @@ async def get_dashboard_data(conversation_id: str, user_id: str = Depends(get_cu
     """Fetch analytics, keyword scores, and evaluation for a specific conversation dashboard."""
     # Fetch keywords
     keywords = await db.get_keywords(user_id, conversation_id)
-    
+
     # Calculate a normalized final score [0, 1] for each keyword
     formatted_keywords = []
     if keywords:
         # Find max frequency score for normalization
-        max_freq = max([v[0] for v in keywords.values() if isinstance(v, list) and len(v) == 2] or [1.0])
-        
+        max_freq = max([v[0] for v in keywords.values()
+                       if isinstance(v, list) and len(v) == 2] or [1.0])
+
         for k, v in keywords.items():
             if isinstance(v, list) and len(v) == 2:
                 freq_score = v[0]
                 sim_score = v[1]
-                
+
                 # Normalize frequency relative to max in session (0.0 to 1.0)
                 norm_freq = freq_score / max_freq if max_freq > 0 else 0
-                
+
                 # Combine: 40% frequency weight, 60% similarity weight
                 # This ensures the score is always <= 1.0
                 final_score = (norm_freq * 0.4) + (sim_score * 0.6)
-                
+
                 formatted_keywords.append({
-                    "keyword": k, 
+                    "keyword": k,
                     "score": round(final_score, 2),
                     "original_freq": round(freq_score, 2),
                     "similarity": round(sim_score, 2)
@@ -237,7 +245,8 @@ async def get_dashboard_data(conversation_id: str, user_id: str = Depends(get_cu
             evaluation = await evaluate_interview(history, {}, metadata)
             await db.save_evaluation(user_id, conversation_id, evaluation)
         except Exception as e:
-            logger.error(f"Failed to generate evaluation on the fly: {e}", exc_info=True)
+            logger.error(f"Failed to generate evaluation on the fly: {
+                         e}", exc_info=True)
 
     return {
         "metrics": {
@@ -348,7 +357,6 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     Main chat endpoint. Session state is stored in MongoDB.
     Returns Server-Sent Events (SSE) representing LangGraph node updates and final output.
     """
-    from aspira import create_workflow, AgentState
 
     conversation_id = request.conversation_id
 
@@ -381,23 +389,25 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
                 return
 
             # Handle first question request (empty message, no user history)
-            is_first_message = not request.message.strip() and not any(msg.startswith("User: ") for msg in history)
+            is_first_message = not request.message.strip() and not any(msg.startswith("User: ")
+                                                                       for msg in history)
             if is_first_message:
                 company = metadata.get("company", "").strip()
                 role = metadata.get("role", "").strip()
-                
+
                 greeting = "Hello! Welcome to your interview session. I'm Aspira, your AI interviewer."
                 if role:
-                    greeting += f" I'll be evaluating you for the {role} position"
+                    greeting += f" I'll be evaluating you for the {
+                        role} position"
                     if company:
                         greeting += f" at {company}."
                     else:
                         greeting += "."
                 else:
                     greeting += " I'll be asking you some questions to understand your background and skills better."
-                
+
                 greeting += " Let's start - could you tell me a bit about yourself and your relevant experience?"
-                
+
                 await db.add_conversation_message(user_id, f"Interviewer: {greeting}", conversation_id)
                 yield {"event": "question", "data": json.dumps({"response": greeting})}
                 yield {"event": "end", "data": "Stream finished"}

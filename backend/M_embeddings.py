@@ -25,6 +25,11 @@ _model = None
 _st_model = None  # sentence-transformers fallback
 
 
+def initialize_models():
+    """Explicitly trigger the loading of models into memory."""
+    return _get_model()
+
+
 def _get_model():
     """Lazy-load the embedding model (llama-cpp or sentence-transformers fallback)."""
     global _model, _st_model
