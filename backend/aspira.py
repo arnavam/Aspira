@@ -31,6 +31,7 @@ from prompts import (
     QUESTION_AGENT_SYSTEM_PROMPT,
     QUERY_GENERATION_PROMPT,
     INTERVIEW_QUESTION_PROMPT,
+    DEFAULT_CRITERIA,
 )
 from agent_factory import create_agent, extract_agent_data
 from langfuse import Langfuse, observe
@@ -209,7 +210,7 @@ async def extract_keywords_node(state: AgentState) -> AgentState:
     # Reduce relevancy of old keywords
     if current_kw:
         current_kw = {
-            key: [float(a) / 2, float(b) / 2]
+            key: [float(a), float(b)]
             for key, (a, b) in current_kw.items()
             if isinstance((a, b), (list, tuple)) and len((a, b)) == 2
         }
@@ -271,22 +272,29 @@ async def query_generation_node(state: AgentState) -> AgentState:
     context = "\nCONVERSATION HISTORY\n" + \
         history_str + "\n\n" if history_str else ""
 
-    metadata_section = ""
-    if metadata.get("company") or metadata.get("role"):
-        metadata_section = f"COMPANY: {metadata.get('company', 'Not specified')}\nROLE: {metadata.get(
-            'role', 'Not specified')}\nREQUIREMENTS: {metadata.get('requirements', 'Not specified')}"
+    company = metadata.get("company", "Not specified")
+    role = metadata.get("role", "Not specified")
+    requirements = metadata.get("requirements")
+
+    metadata_section = f"COMPANY: {company}\nROLE: {role}"
+
+    if requirements:
+        criteria_section = f"EVALUATION CRITERIA:\n{requirements}"
+    else:
+        criteria_section = f"EVALUATION CRITERIA:\n{DEFAULT_CRITERIA}"
 
     try:
-        langfuse_prompt = langfuse.get_prompt("query_generation_prompt")
+        langfuse_prompt = langfuse.get_prompt("QUERY_GENERATION_PROMPT")
         prompt = langfuse_prompt.compile(
-            context=context, answer=answer, metadata_section=metadata_section)
-    except Exception as e:
-        logger.warning(f"Failed to fetch query prompt from langfuse: {e}")
-        prompt = QUERY_GENERATION_PROMPT.format(
-            context=context,
-            answer=answer,
-            metadata_section=metadata_section
-        )
+            context=context, answer=answer, metadata_section=metadata_section, criteria_section=criteria_section)
+    except Exception:
+        logger.warning(
+            "Prompt 'QUERY_GENERATION_PROMPT' is missing in Langfuse. Falling back to local default.")
+        prompt = QUERY_GENERATION_PROMPT
+        prompt = prompt.replace("{{context}}", context)
+        prompt = prompt.replace("{{answer}}", answer)
+        prompt = prompt.replace("{{metadata_section}}", metadata_section)
+        prompt = prompt.replace("{{criteria_section}}", criteria_section)
 
     query_agent = create_agent(QUERY_AGENT_SYSTEM_PROMPT)
     result = await query_agent.run(prompt)
@@ -434,10 +442,16 @@ async def generate_questions_node(state: AgentState) -> AgentState:
     context_section = ""
     metadata = state.get("interview_metadata", {})
 
-    metadata_section = ""
-    if metadata.get("company") or metadata.get("role"):
-        metadata_section = f"COMPANY: {metadata.get('company', 'Not specified')}\nROLE: {metadata.get(
-            'role', 'Not specified')}\nREQUIREMENTS: {metadata.get('requirements', 'Not specified')}"
+    company = metadata.get("company", "Not specified")
+    role = metadata.get("role", "Not specified")
+    requirements = metadata.get("requirements")
+
+    metadata_section = f"COMPANY: {company}\nROLE: {role}"
+
+    if requirements:
+        criteria_section = f"EVALUATION CRITERIA:\n{requirements}"
+    else:
+        criteria_section = f"EVALUATION CRITERIA:\n{DEFAULT_CRITERIA}"
 
     # Include Conversation History
     if history:
@@ -458,16 +472,21 @@ async def generate_questions_node(state: AgentState) -> AgentState:
             )
 
     try:
-        langfuse_prompt = langfuse.get_prompt("interview_question_prompt")
+        langfuse_prompt = langfuse.get_prompt("INTERVIEW_QUESTION_PROMPT")
         prompt = langfuse_prompt.compile(
-            history_section=history_section, context_section=context_section, metadata_section=metadata_section)
-    except Exception as e:
-        logger.warning(f"Failed to fetch interview prompt from langfuse: {e}")
-        prompt = INTERVIEW_QUESTION_PROMPT.format(
             history_section=history_section,
             context_section=context_section,
-            metadata_section=metadata_section
+            metadata_section=metadata_section,
+            criteria_section=criteria_section
         )
+    except Exception:
+        logger.warning(
+            "Prompt 'INTERVIEW_QUESTION_PROMPT' is missing in Langfuse. Falling back to local default.")
+        prompt = INTERVIEW_QUESTION_PROMPT
+        prompt = prompt.replace("{{history_section}}", history_section)
+        prompt = prompt.replace("{{context_section}}", context_section)
+        prompt = prompt.replace("{{metadata_section}}", metadata_section)
+        prompt = prompt.replace("{{criteria_section}}", criteria_section)
 
     question_agent = create_agent(QUESTION_AGENT_SYSTEM_PROMPT)
     result = await question_agent.run(prompt)
@@ -534,7 +553,7 @@ async def respond_node(state: AgentState) -> AgentState:
         closest_key = smallest[-1][0]
     logger.info(
         f"Generated {len(q)} questions:\n"
-        + "\n".join(f"  {q.get(question, 0)                    :.2f}: {question}" for question in q.keys())
+        + "\n".join(f"  {q.get(question, 0):.2f}: {question}" for question in q.keys())
     )
 
     logger.info(f"Selected Question : {closest_key}")
