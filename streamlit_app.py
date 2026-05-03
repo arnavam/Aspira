@@ -5,7 +5,9 @@ Streamlit Frontend with Native Chat UI and Resume Upload
 
 import streamlit as st
 import requests
+import streamlit.components.v1 as components
 from typing import Optional
+# from streamlit_mic_recorder import speech_to_text
 
 
 # --- Configuration ---
@@ -50,7 +52,7 @@ st.markdown("""
     }
     
     /* Resume Card */
-    .resume-card {
+    .resume-card
         background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
         border: 2px dashed #0ea5e9;
         border-radius: 12px;
@@ -161,6 +163,8 @@ if "current_view" not in st.session_state:
     st.session_state.current_view = "Interview"
 if "conversations_list" not in st.session_state:
     st.session_state.conversations_list = ["default"]
+if "tts_engine" not in st.session_state:
+    st.session_state.tts_engine = "Edge TTS (High Quality)"
 
 
 # --- API Configuration ---
@@ -259,6 +263,48 @@ def send_chat_message(message: str, token: str, conversation_id: str) -> tuple[b
             return False, error
     except requests.RequestException as e:
         return False, str(e)
+
+def transcribe_audio(audio_bytes: bytes, token: str) -> tuple[bool, str]:
+    """Send audio bytes to backend for Groq Whisper transcription."""
+    try:
+        files = {"file": ("audio.wav", audio_bytes, "audio/wav")}
+        response = requests.post(
+            f"{API_BASE_URL}/transcribe",
+            files=files,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30
+        )
+        if response.status_code == 200:
+            return True, response.json().get("text", "")
+        else:
+            return False, response.json().get("detail", "Transcription failed")
+    except requests.RequestException as e:
+        return False, str(e)
+
+def get_tts_audio(text: str) -> Optional[bytes]:
+    """Fetch TTS audio bytes from backend."""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/tts",
+            params={"text": text},
+            timeout=15
+        )
+        if response.status_code == 200:
+            return response.content
+    except:
+        pass
+    return None
+
+def browser_tts(text: str):
+    """Trigger browser native Text-to-Speech using JS."""
+    safe_text = text.replace('"', '\\"').replace('\n', ' ')
+    js_code = f"""
+        <script>
+            var msg = new SpeechSynthesisUtterance("{safe_text}");
+            window.speechSynthesis.speak(msg);
+        </script>
+    """
+    components.html(js_code, height=0, width=0)
 
 def fetch_conversations(token: str) -> list:
     """Fetch user's conversation IDs."""
@@ -469,20 +515,46 @@ def render_chat_interface():
         with st.chat_message(message["role"], avatar="🧑‍💼" if message["role"] == "user" else "✨"):
             st.markdown(message["content"])
     
-    # Chat input
-    if prompt := st.chat_input("Type your response here...", key="chat_input"):
+    # --- Inputs ---
+    user_prompt = None
+    
+    st.write("🎙️ **Voice Input Options**")
+    # col1, col2 = st.columns(2)
+    # with col1:
+    #     st.caption("High Quality (Groq Whisper)")
+    #     audio_value = st.audio_input("Record Audio", label_visibility="collapsed")
+    #     if audio_value is not None:
+    #         if "last_audio" not in st.session_state or st.session_state.last_audio != audio_value.getvalue():
+    #             with st.spinner("Transcribing..."):
+    #                 success, text = transcribe_audio(audio_value.getvalue(), st.session_state.access_token)
+    #                 if success and text:
+    #                     user_prompt = text
+    #                     st.session_state.last_audio = audio_value.getvalue()
+    #                 else:
+    #                     st.error(f"Transcription failed: {text}")
+
+    # with col2:
+    #     st.caption("Fast (Browser Native)")
+    #     st.info("Browser Dictation temporarily disabled for debugging.")
+
+    text_prompt = st.chat_input("Type your response here...", key="chat_input")
+    if text_prompt:
+        user_prompt = text_prompt
+
+    # Process prompt
+    if user_prompt:
         # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append({"role": "user", "content": user_prompt})
         
         # Display user message immediately
         with st.chat_message("user", avatar="🧑‍💼"):
-            st.markdown(prompt)
+            st.markdown(user_prompt)
         
         # Get AI response
         with st.chat_message("assistant", avatar="✨"):
             with st.spinner("Thinking..."):
                 success, response = send_chat_message(
-                    prompt, 
+                    user_prompt, 
                     st.session_state.access_token,
                     st.session_state.conversation_id
                 )
@@ -490,6 +562,14 @@ def render_chat_interface():
             if success:
                 st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
+                
+                if st.session_state.tts_engine == "Edge TTS (High Quality)":
+                    with st.spinner("Generating voice..."):
+                        tts_bytes = get_tts_audio(response)
+                        if tts_bytes:
+                            st.audio(tts_bytes, format="audio/mpeg", autoplay=True)
+                else:
+                    browser_tts(response)
             else:
                 error_msg = f"❌ Error: {response}"
                 st.error(error_msg)
@@ -546,6 +626,14 @@ def render_sidebar():
             st.session_state.messages = load_conversation_history(selected_conv, st.session_state.access_token)
             st.session_state.interview_started = len(st.session_state.messages) > 0
             st.rerun()
+            
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### ⚙️ Settings")
+        st.session_state.tts_engine = st.sidebar.radio(
+            "AI Voice Engine",
+            ["Edge TTS (High Quality)", "Browser Native (Fast)"],
+            index=0 if st.session_state.tts_engine == "Edge TTS (High Quality)" else 1
+        )
             
     # Interview stats (only show if in session)
     if st.session_state.access_token and st.session_state.messages and st.session_state.current_view == "Interview":
