@@ -17,9 +17,10 @@ from auth import (verify_password, get_password_hash, create_access_token,
                   ALGORITHM, SECRET_KEY, jwt, JWTError)
 from M_embeddings import initialize_models
 from model_cache import initialize_all_models
-
-
 from aspira import create_workflow, AgentState
+from I_evaluation import evaluate_interview
+
+
 # Initialize Database
 db = Database()
 
@@ -240,7 +241,7 @@ async def get_dashboard_data(conversation_id: str, user_id: str = Depends(get_cu
     evaluation = await db.get_evaluation(user_id, conversation_id)
     if not evaluation and history:
         try:
-            from I_evaluation import evaluate_interview
+            
             metadata = await db.get_interview_metadata(user_id, conversation_id)
             evaluation = await evaluate_interview(history, {}, metadata)
             await db.save_evaluation(user_id, conversation_id, evaluation)
@@ -357,6 +358,7 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     Main chat endpoint. Session state is stored in MongoDB.
     Returns Server-Sent Events (SSE) representing LangGraph node updates and final output.
     """
+    
 
     conversation_id = request.conversation_id
 
@@ -381,7 +383,6 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
     async def event_generator():
         try:
             if request.force_end:
-                from I_evaluation import evaluate_interview
                 eval_data = await evaluate_interview(history, {}, metadata)
                 await db.save_evaluation(user_id, conversation_id, eval_data)
                 yield {"event": "evaluation", "data": json.dumps(eval_data)}
