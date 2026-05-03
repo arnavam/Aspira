@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, Square, Menu, Settings, BarChart3, LogOut, X, Code, Send, Volume2 } from 'lucide-react';
+import { Mic, Square, Menu, Settings, LogOut, X, Code, Send, Volume2 } from 'lucide-react';
 import { api, clearAuthToken } from '../services/api';
 
 type Message = { role: 'user' | 'assistant'; content: string };
@@ -25,7 +25,7 @@ export default function Interview() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
-  const hasGreetingPlayedRef = useRef(false);
+
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   
   const navigate = useNavigate();
