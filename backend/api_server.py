@@ -288,8 +288,8 @@ async def upload_resume(
         # Store for this user in DB
         await db.save_resume(user_id, text)
 
-        logger.info(f"Resume stored for user {user_id}: {
-                    len(text)} chars from {file.filename}")
+        logger.info(f'''Resume stored for user {user_id}: {
+                    len(text)} chars from {file.filename}''')
         return {"message": "Resume processed successfully", "chars": len(text), "filename": file.filename}
 
     except Exception as e:
