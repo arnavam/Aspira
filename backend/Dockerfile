@@ -1,54 +1,46 @@
-# Build stage
+# 1. BUILD STAGE
 FROM python:3.13-slim AS builder
-
 WORKDIR /app
+ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    cmake \
-    build-essential \
-    curl \
+    gcc g++ cmake build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Download spaCy model and textblob corpora
+# Download models in build stage so they are baked into the layer
 RUN python -m spacy download en_core_web_md && \
     python -m textblob.download_corpora
 
-# Download embedding model (nomic-embed-text GGUF - ~100MB)
 RUN mkdir -p /app/models && \
     curl -L -o /app/models/nomic-embed-text-v1.5.Q4_K_M.gguf \
     "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
 
-# Runtime stage
+# 2. RUNTIME STAGE
 FROM python:3.13-slim
-
 WORKDIR /app
 
-# Install only runtime dependencies (curl for healthchecks if needed)
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Create a non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    apt-get update && apt-get install -y curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.11/site-packages
+# Copy only the necessary user-space packages and models
+COPY --from=builder /root/.local /home/appuser/.local
 COPY --from=builder /app/models /app/models
 
-# Update PATH to include user-installed packages
-ENV PATH=/root/.local/bin:$PATH
+# Set permissions and env
+ENV PATH=/home/appuser/.local/bin:$PATH
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+USER appuser
 
-# Copy app code
-COPY . .
-
-# Create log directory
+COPY --chown=appuser:appuser . .
 RUN mkdir -p log
 
 EXPOSE 8000
-
 CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]
