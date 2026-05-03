@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ RUN mkdir -p /app/models && \
     "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy Python packages from builder
 COPY --from=builder /root/.local /root/.local
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /app/models /app/models
 
 # Update PATH to include user-installed packages
