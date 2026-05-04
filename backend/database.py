@@ -242,3 +242,22 @@ class Database:
             )
         except Exception as e:
             logger.error(f"Error updating evaluation: {e}")
+
+    # --- KNOWLEDGE GRAPH ---
+    async def get_knowledge_graph(self, user_id: str, conversation_id: str) -> dict:
+        """Retrieve the knowledge graph for a specific conversation."""
+        doc = await self.db.knowledge_graphs.find_one(
+            {"user_id": user_id, "conversation_id": conversation_id}
+        )
+        return doc.get("graph_data", {}) if doc else {}
+
+    async def save_knowledge_graph(self, user_id: str, conversation_id: str, graph_data: dict):
+        """Upsert the knowledge graph for a specific conversation."""
+        try:
+            await self.db.knowledge_graphs.update_one(
+                {"user_id": user_id, "conversation_id": conversation_id},
+                {"$set": {"graph_data": graph_data, "updated_at": datetime.utcnow()}},
+                upsert=True
+            )
+        except Exception as e:
+            logger.error(f"Error saving knowledge graph: {e}")

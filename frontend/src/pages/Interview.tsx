@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, Square, Menu, Settings, LogOut, X, Code, Send, Volume2 } from 'lucide-react';
+import { Mic, Square, Menu, Settings, LogOut, X, Code, Send, Volume2, Zap } from 'lucide-react';
 import { api, clearAuthToken } from '../services/api';
 
 type Message = { role: 'user' | 'assistant'; content: string };
@@ -20,6 +20,7 @@ export default function Interview() {
   const [isRecording, setIsRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ttsEngine, setTtsEngine] = useState<'edge' | 'browser'>('edge');
+  const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [statusMessage, setStatusMessage] = useState('Initializing...');
   
@@ -37,7 +38,10 @@ export default function Interview() {
       // Check if we came from Setup with a new conversation ID
       if (location.state?.newConversationId) {
         const newId = location.state.newConversationId;
-        setConversations(prev => [...prev, newId]);
+        setConversations(prev => {
+          if (!prev.includes(newId)) return [...prev, newId];
+          return prev;
+        });
         setCurrentConv(newId);
         await loadHistory(newId);
         window.history.replaceState({}, document.title);
@@ -142,7 +146,7 @@ export default function Interview() {
     }
   };
 
-  const playTTS = (text: string) => {
+  const playTTS = async (text: string) => {
     if (!text) return;
     
     // Stop any currently playing audio
@@ -154,11 +158,28 @@ export default function Interview() {
 
     if (ttsEngine === 'browser') {
       const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onstart = () => setIsPlayingTTS(true);
+      utterance.onend = () => setIsPlayingTTS(false);
       window.speechSynthesis.speak(utterance);
     } else {
-      const audio = new Audio(api.getTTSUrl(text));
-      currentAudioRef.current = audio;
-      audio.play().catch(e => console.error("Audio playback failed", e));
+      try {
+        const url = await api.fetchTTSAudio(text);
+        const audio = new Audio(url);
+        currentAudioRef.current = audio;
+        
+        audio.onplay = () => setIsPlayingTTS(true);
+        audio.onended = () => {
+          setIsPlayingTTS(false);
+          URL.revokeObjectURL(url); // Clean up
+        };
+        
+        audio.play().catch(e => {
+          console.error("Audio playback failed", e);
+          setIsPlayingTTS(false);
+        });
+      } catch (err) {
+        console.error("Failed to fetch TTS audio", err);
+      }
     }
   };
 
@@ -216,7 +237,21 @@ export default function Interview() {
   };
 
   // --- Audio Recording Logic ---
+  useEffect(() => {
+    let interval: any = null;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording]);
+
   const startRecording = async () => {
+    setRecordingDuration(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -230,8 +265,6 @@ export default function Interview() {
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         stream.getTracks().forEach(track => track.stop());
-        if (timerRef.current) clearInterval(timerRef.current);
-        setRecordingDuration(0);
         
         setLoading(true);
         try {
@@ -248,10 +281,6 @@ export default function Interview() {
 
       mediaRecorder.start();
       setIsRecording(true);
-      setRecordingDuration(0);
-      timerRef.current = window.setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
     } catch (err) {
       console.error("Error accessing microphone", err);
       alert("Microphone access is required.");
@@ -381,6 +410,10 @@ export default function Interview() {
             </select>
           </div>
           
+          <button onClick={() => { setIsSidebarOpen(false); navigate(`/knowledge-map/${currentConv}`); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'none', border: 'none', color: 'var(--accent-secondary)', cursor: 'pointer', fontSize: '0.9rem', padding: '8px 0' }}>
+            <Zap size={16} /> Knowledge Map
+          </button>
+
           <button onClick={() => { setIsSidebarOpen(false); setShowDebug(true); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.9rem', padding: '8px 0' }}>
             <Code size={16} /> Debug & Export
           </button>
@@ -404,13 +437,13 @@ export default function Interview() {
               boxShadow: '0 0 40px rgba(112, 92, 255, 0.15)',
               marginBottom: '20px',
               position: 'relative'
-            }}>
+            }} className={isPlayingTTS ? 'playing-avatar' : ''}>
               <div style={{ position: 'absolute', inset: '6px', borderRadius: '50%', border: '1px solid rgba(255, 255, 255, 0.05)' }} />
               <div style={{ width: '56px', height: '56px', background: '#32365A', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
                 <span style={{ display: 'flex', gap: '4px', alignItems: 'center', color: 'var(--accent-secondary)' }}>
-                  <div style={{ width: '4px', height: '14px', background: 'currentColor', borderRadius: '2px' }} />
-                  <div style={{ width: '4px', height: '22px', background: 'currentColor', borderRadius: '2px' }} />
-                  <div style={{ width: '4px', height: '14px', background: 'currentColor', borderRadius: '2px' }} />
+                  <div style={{ width: '4px', height: '14px', background: 'currentColor', borderRadius: '2px', animation: isPlayingTTS ? 'pulse-height 0.8s infinite ease-in-out' : 'none' }} />
+                  <div style={{ width: '4px', height: '22px', background: 'currentColor', borderRadius: '2px', animation: isPlayingTTS ? 'pulse-height 0.8s infinite ease-in-out 0.2s' : 'none' }} />
+                  <div style={{ width: '4px', height: '14px', background: 'currentColor', borderRadius: '2px', animation: isPlayingTTS ? 'pulse-height 0.8s infinite ease-in-out 0.4s' : 'none' }} />
                 </span>
               </div>
             </div>
@@ -508,7 +541,7 @@ export default function Interview() {
               </button>
 
               <button 
-                className={`btn-icon ${isRecording ? 'recording-pulse' : ''}`}
+                className={`btn-icon ${isRecording ? 'recording-pulse' : ''} ${isPlayingTTS ? 'playing-pulse' : ''}`}
                 onClick={isRecording ? stopRecording : startRecording}
                 disabled={loading}
                 style={{ width: '40px', height: '40px', borderRadius: '50%', background: isRecording ? 'var(--danger)' : 'rgba(255,255,255,0.1)', border: 'none', color: isRecording ? 'white' : 'var(--text-primary)', cursor: loading ? 'not-allowed' : 'pointer' }}

@@ -3,6 +3,7 @@ import Auth from './pages/Auth';
 import Setup from './pages/Setup';
 import Interview from './pages/Interview';
 import Dashboard from './pages/Dashboard';
+import KnowledgeMap from './pages/KnowledgeMap';
 import { getAuthToken } from './services/api';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -41,6 +42,15 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+
+        <Route 
+          path="/knowledge-map/:id" 
+          element={
+            <ProtectedRoute>
+              <KnowledgeMap />
             </ProtectedRoute>
           } 
         />

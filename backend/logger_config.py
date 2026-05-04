@@ -43,7 +43,8 @@ def get_logger(name: str) -> logging.Logger:
     logger.addHandler(console_handler)
 
     # Optional file (local dev only)
-    if not os.environ.get("DOCKER_ENV"):
+    # Always log to file unless explicitly in Docker
+    if str(os.environ.get("DOCKER_ENV", "false")).lower() == "false":
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         file_handler = logging.FileHandler(

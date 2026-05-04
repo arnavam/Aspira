@@ -117,6 +117,7 @@ class AgentState(TypedDict):
     answer_stats: dict  # Statistical baseline metrics
     is_interview_complete: bool  # End interview flag
     interview_metadata: dict  # Company, role, requirements
+    knowledge_graph: dict  # Accumulated knowledge graph data
 
 # =============================================================================
 # LangGraph Workflow
@@ -515,9 +516,16 @@ async def generate_questions_node(state: AgentState) -> AgentState:
     )
 
     # Optional: Build knowledge graph from this turn's data
+    if not relevant_chunks:
+        logger.info('there is no relevant chunks')
     if USE_KNOWLEDGE_GRAPH and relevant_chunks:
         try:
-            graph_result = await asyncio.to_thread(build_knowledge_graph_from_state, state, relevant_chunks, questions)
+            existing_graph = state.get("knowledge_graph", {})
+            turn_id = len(state.get("history", []))
+            graph_result = await asyncio.to_thread(
+                build_knowledge_graph_from_state, state, relevant_chunks, questions, existing_graph, turn_id
+            )
+            state["knowledge_graph"] = graph_result.get("data", {})
             logger.info(f"Knowledge graph updated: {
                         graph_result.get('stats', {})}")
         except Exception as e:

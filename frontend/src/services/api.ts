@@ -1,8 +1,10 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 export const getAuthToken = () => localStorage.getItem("token");
 export const setAuthToken = (token: string) => localStorage.setItem("token", token);
 export const clearAuthToken = () => localStorage.removeItem("token");
+
+const ttsCache: Record<string, string> = {};
 
 const headers = (isFormData = false) => {
   const token = getAuthToken();
@@ -161,5 +163,27 @@ export const api = {
     return res.json();
   },
 
-  getTTSUrl: (text: string) => `${API_URL}/tts?text=${encodeURIComponent(text)}`,
+  getKnowledgeGraph: async (id: string) => {
+    const res = await fetch(`${API_URL}/conversations/${id}/graph`, { headers: headers() });
+    await handleResponse(res);
+    return res.json();
+  },
+
+  fetchTTSAudio: async (text: string) => {
+    if (ttsCache[text]) {
+      console.log("Serving TTS from frontend cache:", text);
+      return ttsCache[text];
+    }
+
+    const res = await fetch(`${API_URL}/tts?text=${encodeURIComponent(text)}`, {
+      headers: headers(),
+    });
+    await handleResponse(res);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    ttsCache[text] = blobUrl;
+
+    return blobUrl;
+  },
 };

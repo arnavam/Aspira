@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from typing import Optional
+from M_embeddings import similarity_score
 
 
 from logger_config import get_logger
@@ -66,6 +67,7 @@ class KnowledgeGraphBuilder:
         Args:
             extractor_type: "spacy" (local NER) or "llm" (llama-cpp based)
         """
+        import networkx as nx
         self.extractor_type = extractor_type
         self.graph = nx.DiGraph()
         self.nodes = []
@@ -309,23 +311,7 @@ JSON:"""
 
     def compute_similarity(self, text1: str, texts: list) -> dict:
         """Compute cosine similarity between text1 and a list of texts."""
-        if not texts:
-            return {}
-
-        emb1 = model_sim.encode([text1], convert_to_tensor=True)
-        emb2 = model_sim.encode(texts, convert_to_tensor=True, batch_size=128)
-
-        emb1 = F.normalize(emb1, p=2, dim=1)
-        if emb2.dim() == 1:
-            emb2 = emb2.unsqueeze(0)
-        emb2 = F.normalize(emb2, p=2, dim=1)
-
-        sims = torch.matmul(emb1, emb2.T).squeeze(0)
-
-        if sims.dim() == 0:
-            return {texts[0]: float(sims)}
-
-        return {t: float(s) for t, s in zip(texts, sims)}
+        return similarity_score(text1, texts)
 
     def find_relevant_chunks(self, answer: str, chunks: list, threshold: float = 0.3) -> list:
         """Find chunks relevant to the user's answer."""
@@ -587,17 +573,19 @@ def build_knowledge_graph(answer: str, chunks: list, questions: list,
     return graph_data
 
 
-def build_knowledge_graph_from_state(state: dict, chunks: list, questions: list) -> dict:
+def build_knowledge_graph_from_state(state: dict, chunks: list, questions: list,
+                                      existing_graph: dict = None, turn_id: int = 0) -> dict:
     """
-    Build a knowledge graph from LangGraph state.
+    Build a knowledge graph from LangGraph state, merging into an existing graph if provided.
 
     Args:
         state: AgentState dict with history, keywords, scraped_content, etc.
         chunks: List of document chunks (relevant_chunks or all_texts)
         questions: Generated interview questions
+        existing_graph: Optional dict with 'nodes' and 'edges' from the DB to merge into.
 
     Returns:
-        dict: The knowledge graph as JSON with 'stats' key
+        dict: The merged knowledge graph as JSON with 'stats' and 'data' keys.
     """
     # Extract answer from history
     history = state.get("history", [])
@@ -612,27 +600,47 @@ def build_knowledge_graph_from_state(state: dict, chunks: list, questions: list)
     scraped_content = state.get("scraped_content", {})
     source_urls = list(scraped_content.keys()) if scraped_content else []
 
-    # Get filepath (creates new session if needed)
-    save_path = get_knowledge_graph_filepath()
-
-    # Build and save
+    # Build new graph data for this turn
     builder = KnowledgeGraphBuilder(extractor_type="spacy")
     graph_data = builder.build_graph(
         answer=answer,
         chunks=chunks,
         questions=questions,
         source_urls=source_urls,
-        keywords=keywords
+        keywords=keywords,
+        session_id=turn_id
     )
-    builder.save_to_file(save_path)
 
-    logger.info(f"Knowledge graph saved to {save_path}")
+    # Merge with existing graph if provided
+    merged = {"nodes": [], "edges": []}
+    if existing_graph and existing_graph.get("nodes"):
+        merged["nodes"] = list(existing_graph["nodes"])
+        merged["edges"] = list(existing_graph.get("edges", []))
+
+    # Append new nodes and edges from this turn
+    merged["nodes"].extend(graph_data.get("nodes", []))
+    merged["edges"].extend(graph_data.get("edges", []))
+
+    # Recalculate summary
+    merged["summary"] = {
+        "total_nodes": len(merged["nodes"]),
+        "total_edges": len(merged["edges"]),
+        "node_types": {
+            "answer": len([n for n in merged["nodes"] if n.get("type") == "answer"]),
+            "source": len([n for n in merged["nodes"] if n.get("type") == "source"]),
+            "topic": len([n for n in merged["nodes"] if n.get("type") == "topic"]),
+            "document": len([n for n in merged["nodes"] if n.get("type") == "document"]),
+            "question": len([n for n in merged["nodes"] if n.get("type") == "question"]),
+        }
+    }
+
+    logger.info(f"Knowledge graph merged: {merged['summary']}")
 
     return {
-        "stats": graph_data.get("summary", {}),
-        "filepath": save_path,
-        "data": graph_data
+        "stats": merged.get("summary", {}),
+        "data": merged
     }
+
 
 
 if __name__ == "__main__":
