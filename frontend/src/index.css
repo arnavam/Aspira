@@ -319,3 +319,40 @@ label {
     padding: 40px 24px;
   }
 }
+
+/* Knowledge Map refresh spinner */
+.spin-slow {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* TTS playing avatar glow */
+.playing-avatar {
+  animation: avatar-glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes avatar-glow {
+  from {
+    box-shadow: 0 0 40px rgba(112, 92, 255, 0.15);
+    border-color: rgba(112, 92, 255, 0.4);
+  }
+  to {
+    box-shadow: 0 0 60px rgba(112, 92, 255, 0.4), 0 0 100px rgba(221, 161, 94, 0.15);
+    border-color: rgba(221, 161, 94, 0.6);
+  }
+}
+
+/* Playing pulse on mic button */
+.playing-pulse {
+  animation: playing-ring 1.5s ease-in-out infinite;
+}
+
+@keyframes playing-ring {
+  0% { box-shadow: 0 0 0 0 rgba(221, 161, 94, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(221, 161, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(221, 161, 94, 0); }
+}

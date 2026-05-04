@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from groq import Groq
 import edge_tts
 from typing import Dict
+import hashlib
 from database import Database
 from auth import (verify_password, get_password_hash, create_access_token,
                   ALGORITHM, SECRET_KEY, jwt, JWTError)
@@ -19,7 +20,7 @@ from M_embeddings import initialize_models
 from model_cache import initialize_all_models
 from aspira import create_workflow, AgentState
 from I_evaluation import evaluate_interview
-
+from K_llamaindex_graph import KnowledgeGraphBuilder
 
 # Initialize Database
 db = Database()
@@ -34,6 +35,7 @@ async def startup_db_client():
     # Eagerly load AI/NLP models for faster first response
     initialize_models()
     initialize_all_models()
+    KnowledgeGraphBuilder(extractor_type="spacy")
 
 # CORS
 app.add_middleware(
@@ -256,7 +258,37 @@ async def get_dashboard_data(conversation_id: str, user_id: str = Depends(get_cu
         },
         "keywords": formatted_keywords,
         "evaluation": evaluation,
-        "history": history
+        "history": history,
+        "knowledge_graph": await db.get_knowledge_graph(user_id, conversation_id)
+    }
+
+
+@app.get("/conversations/{conversation_id}/graph")
+async def get_knowledge_graph(conversation_id: str, user_id: str = Depends(get_current_user)):
+    """Fetch the live knowledge graph for a specific conversation."""
+    graph = await db.get_knowledge_graph(user_id, conversation_id)
+    keywords = await db.get_keywords(user_id, conversation_id)
+    metadata = await db.get_interview_metadata(user_id, conversation_id)
+
+    formatted_keywords = []
+    if keywords:
+        max_freq = max([v[0] for v in keywords.values()
+                       if isinstance(v, list) and len(v) == 2] or [1.0])
+        for k, v in keywords.items():
+            if isinstance(v, list) and len(v) == 2:
+                norm_freq = v[0] / max_freq if max_freq > 0 else 0
+                final_score = (norm_freq * 0.4) + (v[1] * 0.6)
+                formatted_keywords.append({
+                    "keyword": k,
+                    "score": round(final_score, 2),
+                })
+
+    formatted_keywords.sort(key=lambda x: x["score"], reverse=True)
+
+    return {
+        "graph": graph,
+        "keywords": formatted_keywords[:15],
+        "metadata": metadata,
     }
 
 
@@ -328,24 +360,29 @@ async def transcribe_audio(file: UploadFile = File(...), user_id: str = Depends(
 
 
 @app.get("/tts")
-async def generate_tts(text: str):
-    """Generate Text-to-Speech using edge-tts."""
+async def generate_tts(text: str, user_id: str = Depends(get_current_user)):
+    """Generate Text-to-Speech using edge-tts with local caching."""
     try:
+        # Create cache directory if it doesn't exist
+        cache_dir = "log/tts_cache"
+        os.makedirs(cache_dir, exist_ok=True)
+
+        # Generate unique filename based on text hash
+        text_hash = hashlib.md5(text.encode()).hexdigest()
+        cache_path = os.path.join(cache_dir, f"{text_hash}.mp3")
+
+        # Return cached file if it exists
+        if os.path.exists(cache_path):
+            return FileResponse(cache_path, media_type="audio/mpeg", filename="response.mp3")
+
+        # Otherwise, generate new TTS
         communicate = edge_tts.Communicate(text, "en-US-AriaNeural")
-
-        # We need a temp file that persists just long enough to be sent
-        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        tmp_file.close()
-
-        await communicate.save(tmp_file.name)
+        await communicate.save(cache_path)
 
         return FileResponse(
-            tmp_file.name,
+            cache_path,
             media_type="audio/mpeg",
-            filename="response.mp3",
-            # FastAPI's FileResponse doesn't auto-delete the file after sending by default.
-            # We'll use a BackgroundTask to delete it, but for simplicity here we just return it.
-            # Using background parameter requires Starlette BackgroundTask.
+            filename="response.mp3"
         )
     except Exception as e:
         logger.error(f"TTS error: {e}", exc_info=True)
@@ -429,8 +466,8 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
                 "relevant_chunks": [],
                 "question_scores": {},
                 "no_keywords": 1,
-                "no_links": 1,
-                "no_chunks": 1,
+                "no_links": 3,
+                "no_chunks": 3,
                 "answer_stats": {},
                 "is_interview_complete": False,
                 "interview_metadata": metadata
@@ -454,12 +491,16 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
                         if new_keywords:
                             await db.update_keywords(user_id, new_keywords, conversation_id)
 
+                        # Save updated knowledge graph
+                        knowledge_graph = state_update.get("knowledge_graph", {})
+                        if knowledge_graph:
+                            await db.save_knowledge_graph(user_id, conversation_id, knowledge_graph)
+
                         # Send final question
                         yield {"event": "question", "data": json.dumps({"response": response_question})}
 
                     # AI-driven termination handling
                     if node_name == "query_generation" and state_update.get("is_interview_complete"):
-                        from I_evaluation import evaluate_interview
                         eval_data = await evaluate_interview(history, state_update.get("answer_stats", {}), metadata)
                         await db.save_evaluation(user_id, conversation_id, eval_data)
                         yield {"event": "evaluation", "data": json.dumps(eval_data)}
