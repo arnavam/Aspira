@@ -45,6 +45,50 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="animate-fade-in">
+
+            {data.evaluation && (
+              <div className="glass" style={{ padding: '2rem', borderRadius: '16px', marginBottom: '1.5rem' }}>
+                <h3 style={{ marginBottom: '1.5rem', color: 'var(--accent-secondary)' }}>AI Evaluation Feedback</h3>
+                <p style={{ fontSize: '1rem', lineHeight: 1.6, marginBottom: '2rem', color: 'var(--text-primary)' }}>
+                  {data.evaluation.feedback}
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '8px' }}>Technical Accuracy</p>
+                    <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{data.evaluation.grades?.technical_accuracy || 'N/A'}</p>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '8px' }}>Communication</p>
+                    <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{data.evaluation.grades?.communication || 'N/A'}</p>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '8px' }}>Role Fit</p>
+                    <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{data.evaluation.grades?.role_fit || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="glass" style={{ padding: '2rem', borderRadius: '16px' }}>
+              <h3 style={{ marginBottom: '3rem' }}>Keyword Performance</h3>
+              {data.keywords && data.keywords.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {data.keywords.map((kwObj: any) => (
+                    <div key={kwObj.keyword}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
+                        <span style={{ fontWeight: '500' }}>{kwObj.keyword}</span>
+                        <span>{(kwObj.score * 100).toFixed(0)}%</span>
+                      </div>
+                      <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))', width: `${kwObj.score * 100}%`, borderRadius: '4px' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-secondary)' }}>No keywords analyzed yet.</p>
+              )}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
               <div className="glass" style={{ padding: '1.5rem', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <div style={{ padding: '1rem', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '12px', color: 'var(--accent-primary)' }}>
@@ -66,26 +110,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="glass" style={{ padding: '2rem', borderRadius: '16px' }}>
-              <h3 style={{ marginBottom: '1.5rem' }}>Keyword Performance</h3>
-              {data.keywords && data.keywords.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {data.keywords.map((kwObj: any) => (
-                    <div key={kwObj.keyword}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
-                        <span style={{ fontWeight: '500' }}>{kwObj.keyword}</span>
-                        <span>{(kwObj.score * 100).toFixed(0)}%</span>
-                      </div>
-                      <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))', width: `${kwObj.score * 100}%`, borderRadius: '4px' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ color: 'var(--text-secondary)' }}>No keywords analyzed yet.</p>
-              )}
-            </div>
+
 
             {data.history && data.history.length > 0 && (
               <div className="glass" style={{ padding: '2rem', borderRadius: '16px', marginTop: '1.5rem' }}>
