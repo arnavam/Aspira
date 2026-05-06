@@ -18,6 +18,7 @@ from auth import (verify_password, get_password_hash, create_access_token,
                   ALGORITHM, SECRET_KEY, jwt, JWTError)
 from M_embeddings import initialize_models
 from model_cache import initialize_all_models
+from visualize_graph import generate_stacked_graph_html
 from aspira import create_workflow, AgentState
 from I_evaluation import evaluate_interview
 from K_llamaindex_graph import KnowledgeGraphBuilder
@@ -289,6 +290,17 @@ async def get_knowledge_graph(conversation_id: str, user_id: str = Depends(get_c
         "graph": graph,
         "keywords": formatted_keywords[:15],
         "metadata": metadata,
+    }
+
+
+@app.get("/conversations/{conversation_id}/graph_html")
+async def get_knowledge_graph_html(conversation_id: str, user_id: str = Depends(get_current_user)):
+    """Fetch the generated PyVis HTML string for the knowledge graph."""
+    graph_data = await db.get_knowledge_graph(user_id, conversation_id)
+    html_content = generate_stacked_graph_html(graph_data)
+    
+    return {
+        "html_content": html_content
     }
 
 

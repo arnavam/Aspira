@@ -374,6 +374,82 @@ def create_master_visualization(subgraphs: List[dict], output_base_name: str, ou
 
     return master_path
 
+import html
+import tempfile
+
+def generate_stacked_graph_html(graph_data: dict) -> str:
+    """Generate a single HTML string containing stacked PyVis graphs."""
+    if not graph_data or not graph_data.get("nodes"):
+        return "<html><body style='background-color:#0A0C10;'><h3 style='color:#c5c6c7;text-align:center;margin-top:50px;font-family:sans-serif;'>No graph data available.</h3></body></html>"
+
+    subgraphs = get_connected_subgraphs(graph_data)
+    iframe_blocks = ""
+
+    for i, subgraph in enumerate(subgraphs):
+        compressed = compress_subgraph_sources(subgraph)
+        
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        create_pyvis_network(compressed, tmp_path)
+        
+        with open(tmp_path, 'r') as f:
+            part_html = f.read()
+            
+        os.remove(tmp_path)
+        
+        # Escape the HTML for srcdoc
+        escaped_html = html.escape(part_html)
+        
+        iframe_blocks += f"""
+        <div class="graph-container">
+            <iframe srcdoc="{escaped_html}" scrolling="no"></iframe>
+        </div>
+        """
+
+    master_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            background-color: #0A0C10;
+            color: #c5c6c7;
+            font-family: 'DM Sans', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }}
+        h1 {{
+            text-align: center;
+            color: #705CFF;
+            margin-bottom: 30px;
+            font-size: 1.5rem;
+            letter-spacing: 0.05em;
+        }}
+        .graph-container {{
+            width: 100%;
+            height: 650px;
+            margin-bottom: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            overflow: hidden;
+            background-color: #0b0c10;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        iframe {{
+            width: 100%;
+            height: 100%;
+            border: none;
+        }}
+    </style>
+</head>
+<body>
+    <h1>Knowledge Graph Map ({len(subgraphs)} Stages)</h1>
+    {iframe_blocks}
+</body>
+</html>
+    """
+    return master_html
+
 
 def main():
     if len(sys.argv) > 1:
