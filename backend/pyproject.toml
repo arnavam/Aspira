@@ -47,4 +47,5 @@ dependencies = [
 [dependency-groups]
 dev = [
     "fastapi[standard]>=0.136.1",
+    "pytest>=9.0.3",
 ]

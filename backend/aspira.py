@@ -15,6 +15,7 @@ from typing import List, TypedDict
 import asyncio
 import os
 import heapq
+import random
 import numpy as np
 from langgraph.checkpoint.memory import MemorySaver
 from logger_config import get_logger
@@ -518,7 +519,7 @@ async def generate_questions_node(state: AgentState) -> AgentState:
     # Optional: Build knowledge graph from this turn's data
     if not relevant_chunks:
         logger.info('there is no relevant chunks')
-    if USE_KNOWLEDGE_GRAPH and relevant_chunks:
+    if USE_KNOWLEDGE_GRAPH:
         try:
             existing_graph = state.get("knowledge_graph", {})
             turn_id = len(state.get("history", []))
@@ -547,26 +548,10 @@ async def respond_node(state: AgentState) -> AgentState:
         state["question"] = "What interests you most about this career path?"
         return state
 
-    # Select question with median similarity
-    n = 1
+    selected_question = random.choice(list(q.keys()))
+    logger.info(f"Randomly Selected Question : {selected_question}")
 
-    centre_value = np.mean(list(q.values()))
-    smallest = heapq.nsmallest(
-        n, q.items(), key=lambda item: abs(item[1] - centre_value)
-    )
-
-    if len(smallest) >= n:
-        closest_key = smallest[0][0]
-    else:
-        closest_key = smallest[-1][0]
-    logger.info(
-        f"Generated {len(q)} questions:\n"
-        + "\n".join(f"  {q.get(question, 0):.2f}: {question}" for question in q.keys())
-    )
-
-    logger.info(f"Selected Question : {closest_key}")
-
-    state["question"] = next(iter(q.keys()))
+    state["question"] = selected_question
 
     return state
 

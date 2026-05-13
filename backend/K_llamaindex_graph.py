@@ -466,13 +466,20 @@ JSON:"""
                         {"source": tid, "target": q_id, "relation": "asks_about"})
                     linked = True
 
-            # Fallback: if no specific topic matched, link to the most connected topic or random one
+            # Fallback 1: if no specific topic matched, link to the first topic found in this turn
             if not linked and all_topic_ids:
-                fallback_tid = all_topic_ids[0]  # Link to first topic
+                fallback_tid = all_topic_ids[0]
                 self.graph.add_edge(fallback_tid, q_id,
-                                    relation="asks_about_general")
+                                    relation="asks_about_related")
                 self.edges.append(
                     {"source": fallback_tid, "target": q_id, "relation": "asks_about_related"})
+                linked = True
+
+            # Fallback 2: if still not linked (no topics at all), link directly to the Answer node
+            if not linked:
+                self.graph.add_edge(answer_id, q_id, relation="next_question")
+                self.edges.append(
+                    {"source": answer_id, "target": q_id, "relation": "next_question"})
 
         return self.to_json()
 
