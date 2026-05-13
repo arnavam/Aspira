@@ -425,9 +425,10 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
             user_id, f"User: {request.message}", conversation_id)
         history.append(f"User: {request.message}")
 
-    # Load keywords and metadata from DB
+    # Load keywords, metadata, and existing knowledge graph from DB
     keywords = await db.get_keywords(user_id, conversation_id)
     metadata = await db.get_interview_metadata(user_id, conversation_id)
+    existing_kg = await db.get_knowledge_graph(user_id, conversation_id)
 
     async def event_generator():
         try:
@@ -482,7 +483,8 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
                 "no_chunks": 3,
                 "answer_stats": {},
                 "is_interview_complete": False,
-                "interview_metadata": metadata
+                "interview_metadata": metadata,
+                "knowledge_graph": existing_kg
             }
 
             # Stream events as nodes complete

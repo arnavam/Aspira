@@ -3,6 +3,8 @@ from K_llamaindex_graph import build_knowledge_graph
 import json
 import os
 
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # Test data with keywords
 test_answer = "I want to become a machine learning engineer at Google"
 test_chunks = [
