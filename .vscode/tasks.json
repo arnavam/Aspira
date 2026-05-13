@@ -29,9 +29,9 @@
       }
     },
     {
-      "label": "Run Streamlit Frontend",
+      "label": "Run Frontend",
       "type": "shell",
-      "command": "streamlit run streamlit_app.py",
+      "command": "cd frontend && pnpm run dev",
       "isBackground": true,
       "problemMatcher": {
         "pattern": {

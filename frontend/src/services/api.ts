@@ -169,6 +169,12 @@ export const api = {
     return res.json();
   },
 
+  getKnowledgeGraphHtml: async (id: string) => {
+    const res = await fetch(`${API_URL}/conversations/${id}/graph_html`, { headers: headers() });
+    await handleResponse(res);
+    return res.json();
+  },
+
   fetchTTSAudio: async (text: string) => {
     if (ttsCache[text]) {
       console.log("Serving TTS from frontend cache:", text);

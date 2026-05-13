@@ -1,18 +1,24 @@
 import asyncio
+
 import os
 import webbrowser
 from database import Database
 from visualize_graph import generate_stacked_graph_html
 
+import sys
+sys.path.insert(0, os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..')))
+
+
 async def test_visualization():
     # Uses your project's Database class (no motor needed)
     db = Database()
-    
+
     # 1. Fetch the latest knowledge graph from DB
     print("Fetching latest knowledge graph from MongoDB...")
     # We query the collection directly since Database doesn't have a 'get latest' helper yet
     latest_graph_doc = await db.db.knowledge_graphs.find_one(sort=[("updated_at", -1)])
-    
+
     if not latest_graph_doc:
         print("No knowledge graph found in database. Please run an interview first!")
         return
@@ -29,7 +35,7 @@ async def test_visualization():
     output_file = "test_output.html"
     with open(output_file, "w") as f:
         f.write(html_content)
-    
+
     full_path = os.path.abspath(output_file)
     print(f"\nSuccess! Visualization saved to: {full_path}")
     print("Opening in browser...")
