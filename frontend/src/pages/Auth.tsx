@@ -7,6 +7,7 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [groqKey, setGroqKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -31,7 +32,10 @@ export default function Auth() {
         setAuthToken(data.access_token);
         navigate('/setup');
       } else {
-        const data = await api.register(username, password);
+        if (!groqKey.trim().startsWith('gsk_')) {
+          throw new Error("Invalid Groq API Key format. It should start with 'gsk_'");
+        }
+        const data = await api.register(username, password, groqKey.trim());
         setAuthToken(data.access_token);
         navigate('/setup');
       }
@@ -91,6 +95,26 @@ export default function Auth() {
               />
             </div>
           </div>
+
+          {!isLogin && (
+            <div style={{ marginBottom: '2rem' }}>
+              <label>Groq API Key</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="password" 
+                  placeholder="gsk_..." 
+                  value={groqKey} 
+                  onChange={(e) => setGroqKey(e.target.value)} 
+                  required 
+                  style={{ paddingLeft: '2.5rem' }}
+                />
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                Required for the AI to function. It will be securely stored.
+              </p>
+            </div>
+          )}
 
           <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
             {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}

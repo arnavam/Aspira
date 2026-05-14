@@ -1,29 +1,78 @@
-# AI_interviewer
+# Aspira — High-Stakes AI Interviewer Protocol
 
-this is an interviewr program which can be used to interviwe people i tried to manually implement this without using any tools like langchain or bigger llm models just a fine tuned bert.
+Aspira is a premium, end-to-end AI-powered interviewer platform designed to simulate high-stakes professional interviews. It leverages state-of-the-art LLM orchestration to provide dynamic questioning, real-time knowledge mapping, and automated performance analytics.
 
-## strength
-- it creates question based on the answer you provided hence it sometimes comes questions that are interesting , hence can i used test all types of knwoledge
-- its not high end model uses less rerouce and run very fast unless u use the 'converter.py' create which creates a vdeio that talks this task generaly take a lot of time
-- fully open source and can be used your own need and there is nto rate limit
+## 🏗️ Project Architecture
 
+The project is split into two main components:
 
-## weakness
-- since used a small llm , it doesnt understand the situation or connects prevoius question to older question.. , just generate querstion even if you say 'hlo how are you'
-- some times the duckduckgo api might reach the limit then you might to switch to other apis
-- the question sometimes can be redundunt when the data which we get from duckduckgo is ireelveant,
-- just use a sentence transformer to find the similarity hence maynot understand the context 
-- the vdeio makeing is done using wav2lip which takes a large time upto 30 sec for each vedio creation hence that much lag if turned on
+- **[Frontend](./frontend)**: A modern, glassmorphic React dashboard built with Vite and TypeScript.
+- **[Backend](./backend)**: A high-performance FastAPI server utilizing LangGraph for complex interview workflows and LLM orchestration.
 
-### notes;-
-- to me this was a personal learning proejct , the aim was not to creation a high end product but the learn the inner working and behind the scenes of such large applications.
+---
 
-### to run this model you finst nned to setup a enviorment:-
-- run ' conda env create -f requirements.yml && conda activate aspira1'
-'
-- if this doesnt work ( diff os has diff env files) use the requirment md file to manually install 
+## 🛠️ Tech Stack
 
-### after setting up enciourment 
-- run 'python aspira.py' to setuyp backend 
+### Frontend
+- **Framework**: [React 19](https://react.dev/)
+- **Build Tool**: [Vite](https://vitejs.dev/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Styling**: Modern CSS with Glassmorphism and dark-mode aesthetics.
 
+### Backend
+- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
+- **Orchestration**: [LangGraph](https://python.langchain.com/docs/langgraph/) (Stateful AI workflows)
+- **Database**: [MongoDB](https://www.mongodb.com/) (Motor driver)
+- **AI Models**: [Groq](https://groq.com/) (LLMs & Whisper STT)
+- **Speech**: [edge-tts](https://github.com/rany2/edge-tts) (Neural TTS)
+- **RAG & Graph**: [LlamaIndex](https://www.llamaindex.ai/) & NetworkX
 
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) (v18+)
+- [Python 3.13+](https://www.python.org/)
+- [uv](https://github.com/astral-sh/uv) (Python package manager)
+- [MongoDB](https://www.mongodb.com/) (Local or Atlas)
+
+### 2. Backend Setup
+```bash
+cd backend
+cp .env.example .env  # Fill in your GROQ_API_KEY and MONGODB_URI
+uv sync
+uv run uvicorn api_server:app --reload
+```
+
+### 3. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
+The application will be available at `http://localhost:5173`.
+
+---
+
+## ✨ Key Features
+
+- **Dynamic Contextual Interviews**: Questions are generated based on your resume and real-time answers.
+- **Live Knowledge Graph**: Visualize your skill map and expertise depth as the interview progresses.
+- **Automated Evaluation**: Get a detailed breakdown of your technical accuracy, communication, and role fit.
+- **Low-Latency Audio**: High-speed transcription and neural text-to-speech for an immersive experience.
+- **Session Persistence**: All interview history and performance metrics are securely stored.
+
+## 🧪 Testing
+
+To run the backend test suite:
+```bash
+cd backend
+uv run pytest tests/ --cov
+```
+
+---
+
+## 📄 License
+Aspira is open-source software. Feel free to modify and use it according to your needs.
