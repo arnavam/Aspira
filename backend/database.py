@@ -70,11 +70,12 @@ class Database:
         await self.db.scores.create_index("user_id", unique=True)
 
     # --- USER MANAGEMENT ---
-    async def create_user(self, username, password_hash):
+    async def create_user(self, username, password_hash, groq_api_key_encrypted=""):
         try:
             result = await self.db.users.insert_one({
                 "username": username,
                 "password_hash": password_hash,
+                "groq_api_key": groq_api_key_encrypted,
                 "created_at": datetime.utcnow()
             })
             return str(result.inserted_id)
@@ -83,6 +84,13 @@ class Database:
 
     async def get_user(self, username):
         return await self.db.users.find_one({"username": username})
+
+    async def get_user_by_id(self, user_id: str):
+        from bson.objectid import ObjectId
+        try:
+            return await self.db.users.find_one({"_id": ObjectId(user_id)})
+        except Exception:
+            return None
 
     # --- SESSION_COUNTER ---
     async def get_session_counter(self, user_id: str) -> int:

@@ -26,7 +26,6 @@ export default function Interview() {
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<number | null>(null);
 
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   

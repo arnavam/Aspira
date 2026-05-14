@@ -1,5 +1,5 @@
 from logger_config import get_logger
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
@@ -15,6 +15,7 @@ from typing import Dict
 import hashlib
 from database import Database
 from auth import (verify_password, get_password_hash, create_access_token,
+                  encrypt_api_key, decrypt_api_key,
                   ALGORITHM, SECRET_KEY, jwt, JWTError)
 from M_embeddings import initialize_models
 from model_cache import initialize_all_models
@@ -56,6 +57,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 class UserCreate(BaseModel):
     username: str
     password: str
+    groq_api_key: str
 
 
 class Token(BaseModel):
@@ -120,6 +122,14 @@ async def check_health():
 
 @app.post("/register", response_model=Token)
 async def register(user: UserCreate):
+    import re
+    # Basic format validation for Groq API keys (gsk_ followed by alphanumeric characters)
+    if not re.match(r"^gsk_[a-zA-Z0-9]{40,}$", user.groq_api_key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Groq API Key format. It should start with 'gsk_' and be at least 44 characters."
+        )
+
     existing_user = await db.get_user(user.username)
     if existing_user:
         raise HTTPException(
@@ -128,7 +138,8 @@ async def register(user: UserCreate):
         )
 
     hashed_password = get_password_hash(user.password)
-    user_id = await db.create_user(user.username, hashed_password)
+    encrypted_key = encrypt_api_key(user.groq_api_key)
+    user_id = await db.create_user(user.username, hashed_password, encrypted_key)
 
     if not user_id:
         raise HTTPException(
@@ -352,10 +363,15 @@ async def upload_resume(
 
 
 @app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...), user_id: str = Depends(get_current_user)):
+async def transcribe_audio(request: Request, file: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     """Transcribe audio using Groq's Whisper API."""
     try:
-        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        user_doc = await db.get_user_by_id(user_id)
+        groq_api_key = decrypt_api_key(user_doc.get("groq_api_key", "")) if user_doc else ""
+        if not groq_api_key:
+            groq_api_key = os.environ.get("GROQ_API_KEY")
+            
+        client = Groq(api_key=groq_api_key)
         audio_bytes = await file.read()
 
         # Groq API expects a tuple (filename, bytes)
@@ -402,7 +418,7 @@ async def generate_tts(text: str, user_id: str = Depends(get_current_user)):
 
 
 @app.post("/chat")
-async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
+async def chat(request: ChatRequest, req: Request, user_id: str = Depends(get_current_user)):
     """
     Main chat endpoint. Session state is stored in MongoDB.
     Returns Server-Sent Events (SSE) representing LangGraph node updates and final output.
@@ -468,6 +484,11 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
             workflow = create_workflow()
             app_without_memory = workflow.compile()
 
+            user_doc = await db.get_user_by_id(user_id)
+            groq_api_key = decrypt_api_key(user_doc.get("groq_api_key", "")) if user_doc else ""
+            if not groq_api_key:
+                groq_api_key = os.environ.get("GROQ_API_KEY")
+
             # Build initial state
             state: AgentState = {
                 "keywords": keywords,
@@ -484,7 +505,8 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)):
                 "answer_stats": {},
                 "is_interview_complete": False,
                 "interview_metadata": metadata,
-                "knowledge_graph": existing_kg
+                "knowledge_graph": existing_kg,
+                "groq_api_key": groq_api_key
             }
 
             # Stream events as nodes complete

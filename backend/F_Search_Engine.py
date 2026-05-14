@@ -157,8 +157,8 @@ async def search(query: str, num_results: int = 3) -> list:
     Tries: DuckDuckGo → Brave → Tavily
     """
     # Try DuckDuckGo first
-    links = await ddg_search(query, no=num_results)
-
+    # links = await ddg_search(query, no=num_results)
+    links = None
     if not links:
         logger.info("DuckDuckGo failed, trying Brave Search...")
         await asyncio.sleep(1)

@@ -105,6 +105,7 @@ class AgentState(TypedDict):
     keywords: dict  # Accumulated keyword scores
     history: List[str]  # Conversation history
     user_id: str  # User identifier
+    groq_api_key: str  # Optional user-provided Groq API key
 
     # --- Ephemeral (per-request) ---
     question: str  # Generated interviewer question (output)
@@ -298,7 +299,8 @@ async def query_generation_node(state: AgentState) -> AgentState:
         prompt = prompt.replace("{{metadata_section}}", metadata_section)
         prompt = prompt.replace("{{criteria_section}}", criteria_section)
 
-    query_agent = create_agent(QUERY_AGENT_SYSTEM_PROMPT)
+    groq_api_key = state.get("groq_api_key")
+    query_agent = create_agent(QUERY_AGENT_SYSTEM_PROMPT, api_key=groq_api_key)
     result = await query_agent.run(prompt)
     content = extract_agent_data(result).strip()
     logger.debug(f"Query generator response: {content}")
@@ -490,7 +492,8 @@ async def generate_questions_node(state: AgentState) -> AgentState:
         prompt = prompt.replace("{{metadata_section}}", metadata_section)
         prompt = prompt.replace("{{criteria_section}}", criteria_section)
 
-    question_agent = create_agent(QUESTION_AGENT_SYSTEM_PROMPT)
+    groq_api_key = state.get("groq_api_key")
+    question_agent = create_agent(QUESTION_AGENT_SYSTEM_PROMPT, api_key=groq_api_key)
     result = await question_agent.run(prompt)
     response_content = extract_agent_data(result)
 

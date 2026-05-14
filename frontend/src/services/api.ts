@@ -8,7 +8,7 @@ const ttsCache: Record<string, string> = {};
 
 const headers = (isFormData = false) => {
   const token = getAuthToken();
-  const h: HeadersInit = {};
+  const h: Record<string, string> = {};
   if (token) h["Authorization"] = `Bearer ${token}`;
   if (!isFormData) h["Content-Type"] = "application/json";
   return h;
@@ -28,11 +28,11 @@ const handleResponse = async (res: Response) => {
 
 export const api = {
   // Auth
-  register: async (username: string, password: string) => {
+  register: async (username: string, password: string, groq_api_key: string) => {
     const res = await fetch(`${API_URL}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, groq_api_key }),
     });
     await handleResponse(res);
     return res.json();
