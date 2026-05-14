@@ -33,6 +33,9 @@ RUN useradd -m -u 1000 appuser && \
 COPY --from=builder /root/.local /home/appuser/.local
 COPY --from=builder /app/models /app/models
 
+# Create log directory and set permissions before switching user
+RUN mkdir -p log && chown -R appuser:appuser /app
+
 # Set permissions and env
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -40,7 +43,6 @@ ENV PYTHONUNBUFFERED=1
 USER appuser
 
 COPY --chown=appuser:appuser . .
-RUN mkdir -p log
 
 EXPOSE 8000
 CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]
