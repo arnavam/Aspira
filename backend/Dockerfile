@@ -1,5 +1,5 @@
-# 1. BUILD STAGE
-FROM python:3.13-slim AS builder
+# 1. BUILD STAGE – using Python 3.12 (pre-built wheels available)
+FROM python:3.12-slim AS builder
 WORKDIR /app
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -20,8 +20,8 @@ RUN mkdir -p /app/models && \
     curl -L -o /app/models/nomic-embed-text-v1.5.Q4_K_M.gguf \
     "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
 
-# 2. RUNTIME STAGE
-FROM python:3.13-slim
+# 2. RUNTIME STAGE – also Python 3.12
+FROM python:3.12-slim
 WORKDIR /app
 
 # Install runtime dependencies: libgomp1 (for llama-cpp) + curl (if needed)
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -m -u 1000 appuser
 
-#Copy user packages AND model files (still as root)
+# Copy user packages AND model files (still as root)
 COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 COPY --from=builder --chown=appuser:appuser /app/models /app/models
 
