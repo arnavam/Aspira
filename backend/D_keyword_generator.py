@@ -5,8 +5,6 @@ from logger_config import get_logger
 logger = get_logger(__name__)
 
 
-
-
 # def keyword_extraction(text):
 #     from model_cache import get_keybert
 #     kw_model = get_keybert()
