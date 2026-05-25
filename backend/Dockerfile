@@ -55,5 +55,5 @@ COPY --chown=appuser:appuser . .
 RUN python -c "import spacy; spacy.load('en_core_web_md')" || \
     echo "Spacy model not found – will download at runtime"
 
-EXPOSE 8000
-CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 7860
+CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "7860"]
