@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Download models in build stage so they are baked into the layer
+# Download models (they go into /root/.local by default)
 RUN python -m spacy download en_core_web_md && \
     python -m textblob.download_corpora
 
@@ -24,25 +24,36 @@ RUN mkdir -p /app/models && \
 FROM python:3.13-slim
 WORKDIR /app
 
-# Create a non-root user for security
-RUN useradd -m -u 1000 appuser && \
-    apt-get update && apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies: libgomp1 (for llama-cpp) + curl (if needed)
+RUN apt-get update && apt-get install -y \
+    curl \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy only the necessary user-space packages and models
-COPY --from=builder /root/.local /home/appuser/.local
-COPY --from=builder /app/models /app/models
+# Create non-root user
+RUN useradd -m -u 1000 appuser
 
-# Create log directory and set permissions before switching user
-RUN mkdir -p log && chown -R appuser:appuser /app
+# Copy user packages AND fix ownership immediately
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 
-# Set permissions and env
+# Copy model files with correct ownership
+COPY --from=builder --chown=appuser:appuser /app/models /app/models
+
+# Set environment for user-installed packages
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# Switch to non-root user before copying application code
 USER appuser
 
+# Copy application code (already chowned)
 COPY --chown=appuser:appuser . .
+RUN mkdir -p log
+
+# (Optional) Verify Spacy model can be loaded at build time
+RUN python -c "import spacy; spacy.load('en_core_web_md')" || \
+    echo "Spacy model not found – will download at runtime"
 
 EXPOSE 8000
 CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]
