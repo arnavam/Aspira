@@ -33,25 +33,25 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -m -u 1000 appuser
 
-# Copy user packages AND fix ownership immediately
+#Copy user packages AND model files (still as root)
 COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
-
-# Copy model files with correct ownership
 COPY --from=builder --chown=appuser:appuser /app/models /app/models
+
+# Create log directory as root (so it has correct permissions)
+RUN mkdir -p log && chown appuser:appuser log
 
 # Set environment for user-installed packages
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Switch to non-root user before copying application code
+# Switch to non-root user
 USER appuser
 
-# Copy application code (already chowned)
+# Copy application code (now as appuser, but directory already exists)
 COPY --chown=appuser:appuser . .
-RUN mkdir -p log
 
-# (Optional) Verify Spacy model can be loaded at build time
+# (Optional) Verify Spacy model can be loaded – this runs as appuser
 RUN python -c "import spacy; spacy.load('en_core_web_md')" || \
     echo "Spacy model not found – will download at runtime"
 
